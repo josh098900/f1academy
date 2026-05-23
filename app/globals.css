@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+/* base-nova style base styles — the `shadcn` package is a build dependency
+   because of this import, not just a CLI. Don't remove it from package.json. */
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
