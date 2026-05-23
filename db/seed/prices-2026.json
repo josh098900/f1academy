@@ -1,0 +1,26 @@
+{
+  "_note": "PROVISIONAL placeholder prices for Round 3 (Silverstone). NOT calibrated from results — recalibrated in Phase 3 once R1/R2 results are entered (see SCORING_SYSTEM.md). Wildcards default to £5.0M. Edit freely and re-run the seed.",
+  "round": 3,
+  "prices": {
+    "Nina Gademan": 10.5,
+    "Alba Hurup Larsen": 9.0,
+    "Esmee Kosterman": 7.5,
+    "Megan Bruce": 7.0,
+    "Rafaela Ferreira": 9.5,
+    "Alisha Palmowski": 11.0,
+    "Emma Felbermayr": 10.0,
+    "Ella Lloyd": 11.5,
+    "Ella Stevens": 6.5,
+    "Mathilda Paatz": 10.5,
+    "Payton Westcott": 9.0,
+    "Natalia Granada": 7.0,
+    "Lisa Billard": 7.5,
+    "Kaylee Countryman": 8.0,
+    "Jade Jacquet": 9.5,
+    "Ava Dobson": 8.5,
+    "Rachel Robertson": 8.0,
+    "Zoe Florescu": 5.0,
+    "Shi Wei": 5.0,
+    "Autumn Fisher": 5.0
+  }
+}

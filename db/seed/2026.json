@@ -1,0 +1,308 @@
+{
+  "source": {
+    "page": "2026 F1 Academy season",
+    "revid": 1355783299,
+    "url": "https://en.wikipedia.org/wiki/2026_F1_Academy_season?oldid=1355783299",
+    "license": "CC BY-SA 4.0",
+    "fetchedAt": "2026-05-23T22:35:31.527Z"
+  },
+  "season": 2026,
+  "teams": [
+    {
+      "name": "MP Motorsport",
+      "country": "NL"
+    },
+    {
+      "name": "Campos Racing",
+      "country": "ES"
+    },
+    {
+      "name": "Rodin Motorsport",
+      "country": "NZ"
+    },
+    {
+      "name": "Prema Racing",
+      "country": "IT"
+    },
+    {
+      "name": "ART Grand Prix",
+      "country": "FR"
+    },
+    {
+      "name": "Hitech",
+      "country": "GB"
+    }
+  ],
+  "entries": [
+    {
+      "team": "MP Motorsport",
+      "teamCountry": "NL",
+      "carNumber": 3,
+      "driver": "Nina Gademan",
+      "driverCountry": "NL",
+      "f1Partner": "Alpine",
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "MP Motorsport",
+      "teamCountry": "NL",
+      "carNumber": 12,
+      "driver": "Alba Hurup Larsen",
+      "driverCountry": "DK",
+      "f1Partner": "Ferrari",
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "MP Motorsport",
+      "teamCountry": "NL",
+      "carNumber": 32,
+      "driver": "Esmee Kosterman",
+      "driverCountry": "NL",
+      "f1Partner": null,
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "Campos Racing",
+      "teamCountry": "ES",
+      "carNumber": 4,
+      "driver": "Megan Bruce",
+      "driverCountry": "GB",
+      "f1Partner": null,
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "Campos Racing",
+      "teamCountry": "ES",
+      "carNumber": 18,
+      "driver": "Rafaela Ferreira",
+      "driverCountry": "BR",
+      "f1Partner": "Racing Bulls",
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "Campos Racing",
+      "teamCountry": "ES",
+      "carNumber": 21,
+      "driver": "Alisha Palmowski",
+      "driverCountry": "GB",
+      "f1Partner": "Red Bull Racing",
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "Rodin Motorsport",
+      "teamCountry": "NZ",
+      "carNumber": 5,
+      "driver": "Emma Felbermayr",
+      "driverCountry": "AT",
+      "f1Partner": "Audi",
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "Rodin Motorsport",
+      "teamCountry": "NZ",
+      "carNumber": 20,
+      "driver": "Ella Lloyd",
+      "driverCountry": "GB",
+      "f1Partner": "McLaren",
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "Rodin Motorsport",
+      "teamCountry": "NZ",
+      "carNumber": 28,
+      "driver": "Ella Stevens",
+      "driverCountry": "GB",
+      "f1Partner": null,
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "Prema Racing",
+      "teamCountry": "IT",
+      "carNumber": 8,
+      "driver": "Mathilda Paatz",
+      "driverCountry": "DE",
+      "f1Partner": "Aston Martin",
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "Prema Racing",
+      "teamCountry": "IT",
+      "carNumber": 9,
+      "driver": "Payton Westcott",
+      "driverCountry": "US",
+      "f1Partner": "Mercedes",
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "Prema Racing",
+      "teamCountry": "IT",
+      "carNumber": 19,
+      "driver": "Natalia Granada",
+      "driverCountry": "ES",
+      "f1Partner": null,
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "ART Grand Prix",
+      "teamCountry": "FR",
+      "carNumber": 14,
+      "driver": "Lisa Billard",
+      "driverCountry": "FR",
+      "f1Partner": null,
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "ART Grand Prix",
+      "teamCountry": "FR",
+      "carNumber": 91,
+      "driver": "Kaylee Countryman",
+      "driverCountry": "US",
+      "f1Partner": "Haas",
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "ART Grand Prix",
+      "teamCountry": "FR",
+      "carNumber": 95,
+      "driver": "Jade Jacquet",
+      "driverCountry": "FR",
+      "f1Partner": "Williams",
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "Hitech",
+      "teamCountry": "GB",
+      "carNumber": 55,
+      "driver": "Ava Dobson",
+      "driverCountry": "US",
+      "f1Partner": null,
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "Hitech",
+      "teamCountry": "GB",
+      "carNumber": 56,
+      "driver": "Rachel Robertson",
+      "driverCountry": "GB",
+      "f1Partner": null,
+      "rounds": "1–2",
+      "isWildcard": false
+    },
+    {
+      "team": "Hitech",
+      "teamCountry": "GB",
+      "carNumber": 15,
+      "driver": "Zoe Florescu",
+      "driverCountry": "RO",
+      "f1Partner": null,
+      "rounds": "TBC",
+      "isWildcard": true
+    },
+    {
+      "team": "Hitech",
+      "teamCountry": "GB",
+      "carNumber": 24,
+      "driver": "Shi Wei",
+      "driverCountry": "CN",
+      "f1Partner": null,
+      "rounds": "1",
+      "isWildcard": true
+    },
+    {
+      "team": "Hitech",
+      "teamCountry": "GB",
+      "carNumber": 77,
+      "driver": "Autumn Fisher",
+      "driverCountry": "CA",
+      "f1Partner": null,
+      "rounds": "2",
+      "isWildcard": true
+    }
+  ],
+  "rounds": [
+    {
+      "roundNumber": 1,
+      "country": "CN",
+      "circuit": "Shanghai International Circuit",
+      "location": "Shanghai",
+      "dates": [
+        "14 March",
+        "15 March"
+      ],
+      "threeRace": false
+    },
+    {
+      "roundNumber": 2,
+      "country": "CA",
+      "circuit": "Circuit Gilles Villeneuve",
+      "location": "Montreal",
+      "dates": [
+        "23 May",
+        "23 May",
+        "24 May"
+      ],
+      "threeRace": true
+    },
+    {
+      "roundNumber": 3,
+      "country": "GB",
+      "circuit": "Silverstone Circuit",
+      "location": "Silverstone",
+      "dates": [
+        "4 July",
+        "5 July"
+      ],
+      "threeRace": false
+    },
+    {
+      "roundNumber": 4,
+      "country": "NL",
+      "circuit": "Circuit Zandvoort",
+      "location": "Zandvoort",
+      "dates": [
+        "22 August",
+        "23 August"
+      ],
+      "threeRace": false
+    },
+    {
+      "roundNumber": 5,
+      "country": "US",
+      "circuit": "Circuit of the Americas",
+      "location": "Austin",
+      "dates": [
+        "24 October",
+        "24 October",
+        "25 October"
+      ],
+      "threeRace": true
+    },
+    {
+      "roundNumber": 6,
+      "country": "US",
+      "circuit": "Las Vegas Strip Circuit",
+      "location": "Paradise",
+      "dates": [
+        "20 November",
+        "21 November"
+      ],
+      "threeRace": false
+    }
+  ]
+}
