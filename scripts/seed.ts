@@ -68,6 +68,12 @@ function shortName(full: string): string {
   return rest.length ? `${first[0]}. ${rest.join(" ")}` : full;
 }
 
+// Stylised, deterministic avatar seeded by name (DiceBear Notionists on our
+// surface colour). See DESIGN_SYSTEM.md — we don't host driver photos in v1.
+function avatarUrl(name: string): string {
+  return `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(name)}&backgroundColor=141414`;
+}
+
 // "1–2" -> [1,2]; "1,3" -> [1,3]; "1" -> [1]; "TBC" -> [].
 function parseRounds(raw: string): number[] {
   const out = new Set<number>();
@@ -145,16 +151,18 @@ async function main() {
       .eq("full_name", e.driver)
       .maybeSingle()
       .throwOnError();
+    const fields = {
+      short_name: shortName(e.driver),
+      country_code: e.driverCountry,
+      avatar_url: avatarUrl(e.driver),
+    };
     if (existing) {
       driverId.set(e.driver, existing.id);
+      await db.from("drivers").update(fields).eq("id", existing.id).throwOnError();
     } else {
       const { data: row } = await db
         .from("drivers")
-        .insert({
-          full_name: e.driver,
-          short_name: shortName(e.driver),
-          country_code: e.driverCountry,
-        })
+        .insert({ full_name: e.driver, ...fields })
         .select("id")
         .single()
         .throwOnError();
