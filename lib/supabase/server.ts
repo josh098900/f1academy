@@ -1,13 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+import type { Database } from "@/db/types";
+
 // Server-side Supabase client for Server Components, Route Handlers, and
-// Server Actions. Anon key + RLS — never the service role here.
-// TODO(phase-1): add the generated `<Database>` generic once db/types.ts exists.
+// Server Actions. Publishable key + RLS — never the secret key here.
 export async function createClient() {
   const cookieStore = await cookies();
 
-  return createServerClient(
+  return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
