@@ -1,6 +1,16 @@
+import Link from "next/link";
+
 export default function Home() {
   return (
     <main className="flex min-h-dvh flex-col">
+      <header className="flex items-center justify-end px-6 py-5 sm:px-12">
+        <Link
+          href="/login"
+          className="font-display text-sm uppercase tracking-wider text-secondary transition-colors hover:text-primary"
+        >
+          Sign in
+        </Link>
+      </header>
       <section className="flex flex-1 flex-col justify-center px-6 sm:px-12">
         <p className="font-body text-xs uppercase tracking-[0.2em] text-secondary">
           Fantasy League · F1 Academy · 2026 Season

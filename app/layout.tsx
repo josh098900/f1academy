@@ -36,10 +36,11 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // `dark` is permanent — black-first, no light theme (see DESIGN_SYSTEM.md).
   return (
     <html
       lang="en"
-      className={`${bebas.variable} ${archivo.variable} ${jetbrains.variable}`}
+      className={`dark ${bebas.variable} ${archivo.variable} ${jetbrains.variable}`}
     >
       <body className="min-h-dvh bg-base font-body text-primary antialiased">
         {children}
