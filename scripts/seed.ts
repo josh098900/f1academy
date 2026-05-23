@@ -182,6 +182,7 @@ async function main() {
   }
 
   // Rounds + sessions.
+  const roundId = new Map<number, number>();
   for (const r of seed.rounds) {
     const dates = r.dates
       .map((d) => parseDate(d, YEAR))
@@ -208,6 +209,7 @@ async function main() {
       .select("id")
       .single()
       .throwOnError();
+    roundId.set(r.roundNumber, round.id);
 
     const types = r.threeRace
       ? ["qualifying", "race1", "race2", "race3"]
@@ -227,10 +229,44 @@ async function main() {
     }
   }
 
+  // Driver prices (optional, provisional) — db/seed/prices-<year>.json.
+  try {
+    const priceFile = path.join(process.cwd(), "db", "seed", `prices-${YEAR}.json`);
+    const priceData = JSON.parse(await readFile(priceFile, "utf8")) as {
+      round: number;
+      prices: Record<string, number>;
+    };
+    const rid = roundId.get(priceData.round);
+    if (!rid) throw new Error(`prices reference round ${priceData.round}, not seeded`);
+    let priced = 0;
+    for (const [name, price] of Object.entries(priceData.prices)) {
+      const did = driverId.get(name);
+      if (!did) {
+        console.warn(`  price for unknown driver "${name}" — skipped`);
+        continue;
+      }
+      await db
+        .from("driver_prices")
+        .upsert(
+          { round_id: rid, driver_id: did, price_millions: price },
+          { onConflict: "round_id,driver_id" }
+        )
+        .throwOnError();
+      priced++;
+    }
+    console.log(`Seeded ${priced} provisional prices for round ${priceData.round}.`);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") {
+      console.log("No prices file — skipping prices.");
+    } else {
+      throw e;
+    }
+  }
+
   // Summary
   const counts: Record<string, number> = {};
   for (const tbl of [
-    "seasons", "teams", "drivers", "season_entries", "rounds", "sessions",
+    "seasons", "teams", "drivers", "season_entries", "rounds", "sessions", "driver_prices",
   ] as const) {
     const { count } = await db.from(tbl).select("*", { count: "exact", head: true });
     counts[tbl] = count ?? 0;
