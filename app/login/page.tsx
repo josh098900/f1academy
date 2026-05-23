@@ -31,6 +31,20 @@ export default function LoginPage() {
     }
   }
 
+  async function handleGoogle() {
+    setError(null);
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    });
+    // On success the browser is redirected to Google, so we only handle errors.
+    if (error) {
+      setError(error.message);
+      setStatus("error");
+    }
+  }
+
   return (
     <main className="flex min-h-dvh flex-col justify-center px-6 sm:px-12">
       <div className="w-full max-w-sm">
@@ -48,7 +62,25 @@ export default function LoginPage() {
             signing in.
           </p>
         ) : (
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleGoogle}
+              className="mt-6 w-full"
+            >
+              Continue with Google
+            </Button>
+
+            <div className="mt-4 flex items-center gap-3">
+              <span className="h-px flex-1 bg-border-default" />
+              <span className="font-body text-xs uppercase tracking-wider text-muted">
+                or
+              </span>
+              <span className="h-px flex-1 bg-border-default" />
+            </div>
+
+            <form onSubmit={handleSubmit} className="mt-4 space-y-4">
             <label className="block">
               <span className="font-body text-xs uppercase tracking-wider text-secondary">
                 Email
@@ -72,10 +104,11 @@ export default function LoginPage() {
               {status === "sending" ? "Sending…" : "Send magic link"}
             </Button>
 
-            {status === "error" && error ? (
-              <p className="font-body text-xs text-danger">{error}</p>
-            ) : null}
-          </form>
+              {status === "error" && error ? (
+                <p className="font-body text-xs text-danger">{error}</p>
+              ) : null}
+            </form>
+          </>
         )}
 
         <p className="mt-8 font-mono text-xs uppercase tracking-wider text-muted">
