@@ -119,6 +119,111 @@ function surname(fullName: string): string {
   return parts[parts.length - 1];
 }
 
+export type RoundRow = Database["public"]["Tables"]["rounds"]["Row"];
+export type SessionRow = Database["public"]["Tables"]["sessions"]["Row"];
+
+export async function getCurrentSeason(supabase: DB) {
+  const { data } = await supabase
+    .from("seasons")
+    .select("id, year")
+    .eq("is_current", true)
+    .maybeSingle()
+    .throwOnError();
+  return data;
+}
+
+export async function getAllRounds(
+  supabase: DB,
+  seasonId: number
+): Promise<RoundRow[]> {
+  const { data } = await supabase
+    .from("rounds")
+    .select("*")
+    .eq("season_id", seasonId)
+    .order("round_number", { ascending: true })
+    .throwOnError();
+  return data;
+}
+
+export async function getRoundSessions(
+  supabase: DB,
+  roundId: number
+): Promise<SessionRow[]> {
+  const { data } = await supabase
+    .from("sessions")
+    .select("*")
+    .eq("round_id", roundId)
+    .throwOnError();
+  // qualifying first, then races in order.
+  const order = ["qualifying", "race1", "race2", "race3"];
+  return data.sort(
+    (a, b) => order.indexOf(a.session_type) - order.indexOf(b.session_type)
+  );
+}
+
+export type Entrant = {
+  driverId: number;
+  fullName: string;
+  shortName: string;
+  carNumber: number | null;
+  isWildcard: boolean;
+};
+
+// Drivers racing a given round (full-season always; wildcards only their
+// rounds). No price needed — used for results entry on historical rounds too.
+export async function getRoundEntrants(
+  supabase: DB,
+  round: Pick<RoundRow, "season_id" | "round_number">
+): Promise<Entrant[]> {
+  const { data } = await supabase
+    .from("season_entries")
+    .select(
+      "car_number, is_wildcard, rounds, driver:drivers(id, full_name, short_name)"
+    )
+    .eq("season_id", round.season_id)
+    .throwOnError();
+
+  const entrants: Entrant[] = [];
+  for (const e of data) {
+    if (!e.driver) continue;
+    if (e.is_wildcard && !(e.rounds ?? []).includes(round.round_number)) continue;
+    entrants.push({
+      driverId: e.driver.id,
+      fullName: e.driver.full_name,
+      shortName: e.driver.short_name,
+      carNumber: e.car_number,
+      isWildcard: e.is_wildcard,
+    });
+  }
+  return entrants.sort((a, b) => (a.carNumber ?? 999) - (b.carNumber ?? 999));
+}
+
+export type ResultRow = {
+  driverId: number;
+  position: number | null;
+  gridPosition: number | null;
+  status: "classified" | "dnf" | "dsq" | "dns";
+  fastestLap: boolean;
+};
+
+export async function getSessionResults(
+  supabase: DB,
+  sessionId: number
+): Promise<ResultRow[]> {
+  const { data } = await supabase
+    .from("session_results")
+    .select("driver_id, position, grid_position, status, fastest_lap")
+    .eq("session_id", sessionId)
+    .throwOnError();
+  return data.map((r) => ({
+    driverId: r.driver_id,
+    position: r.position,
+    gridPosition: r.grid_position,
+    status: r.status as ResultRow["status"],
+    fastestLap: r.fastest_lap,
+  }));
+}
+
 // Pickable drivers for a round, with that round's price. Full-season drivers are
 // available every round; wildcards only in the rounds they're contracted for.
 export async function getRoundLineup(
