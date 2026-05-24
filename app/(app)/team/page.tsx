@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { DriverCard } from "@/components/team/DriverCard";
+import { LockCountdown } from "@/components/team/LockCountdown";
 import { TeamPicker } from "@/components/team/TeamPicker";
 import { getActiveRound, getRoundLineup, getUserTeam } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
@@ -37,15 +38,6 @@ export default async function TeamPage() {
   const locked = round.lock_time
     ? new Date(round.lock_time) <= new Date()
     : false;
-  const locks = round.lock_time
-    ? new Date(round.lock_time).toLocaleString("en-GB", {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "TBC";
 
   return (
     <main className="min-h-dvh">
@@ -56,10 +48,19 @@ export default async function TeamPage() {
         <h1 className="mt-2 font-display text-[clamp(2rem,5vw,3.5rem)] leading-none tracking-wide uppercase">
           {round.circuit_name}
         </h1>
+        {!locked ? (
+          <div className="mt-3">
+            {round.lock_time ? (
+              <LockCountdown lockTime={round.lock_time} />
+            ) : (
+              <span className="font-mono text-sm tracking-wider text-muted uppercase">
+                Locks TBC
+              </span>
+            )}
+          </div>
+        ) : null}
         <p className="mt-3 font-mono text-xs tracking-wider text-muted uppercase">
-          {locked
-            ? "Locked"
-            : `${lineup.length} drivers · Pick 4 · Budget £40.0M · Locks ${locks}`}
+          {locked ? "Locked" : `${lineup.length} drivers · Pick 4 · Budget £40.0M`}
         </p>
       </header>
 
