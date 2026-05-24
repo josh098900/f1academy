@@ -237,6 +237,28 @@ async function main() {
     }
   }
 
+  // Round lock times (optional, provisional) — db/seed/lock-times-<year>.json.
+  try {
+    const lockFile = path.join(process.cwd(), "db", "seed", `lock-times-${YEAR}.json`);
+    const { lockTimes } = JSON.parse(await readFile(lockFile, "utf8")) as {
+      lockTimes: Record<string, string>;
+    };
+    let set = 0;
+    for (const [rn, iso] of Object.entries(lockTimes)) {
+      const rid = roundId.get(Number(rn));
+      if (!rid) continue;
+      await db.from("rounds").update({ lock_time: iso }).eq("id", rid).throwOnError();
+      set++;
+    }
+    console.log(`Set ${set} round lock time(s).`);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") {
+      console.log("No lock-times file — skipping.");
+    } else {
+      throw e;
+    }
+  }
+
   // Driver prices (optional, provisional) — db/seed/prices-<year>.json.
   try {
     const priceFile = path.join(process.cwd(), "db", "seed", `prices-${YEAR}.json`);
