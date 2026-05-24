@@ -9,6 +9,7 @@ import {
   scoreDriverWeekend,
   type DriverSession,
 } from "../lib/scoring";
+import { scoreUserRound } from "../lib/scoring/round";
 
 describe("qualifyingPoints", () => {
   it("matches the qualifying table", () => {
@@ -160,5 +161,51 @@ describe("scoreDriverWeekend — extras", () => {
       ],
     });
     expect(s.podiumStreak).toBe(6); // (r1,r2) + (r2,r3)
+  });
+});
+
+describe("scoreUserRound — full team for the worked example", () => {
+  const sessionsByDriver = new Map<number, DriverSession[]>([
+    [1, [quali(1), race("race1", 1, 1, { fastestLap: true }), race("race2", 2, 3)]],
+    [2, [quali(2), race("race1", 3, 3), race("race2", 1, 2, { fastestLap: true })]],
+    [3, [quali(3), race("race1", 4, 4), race("race2", 3, 3)]],
+    [4, [quali(6), race("race1", 7, 8), race("race2", null, null, { status: "dnf" })]],
+  ]);
+
+  it("sums the team to 229 with Felbermayr boosted", () => {
+    const r = scoreUserRound({
+      driverIds: [1, 2, 3, 4],
+      boostDriverId: 1,
+      transfersUsed: 0,
+      wildcard: false,
+      sessionsByDriver,
+    });
+    expect(r.roundPoints).toBe(229);
+    expect(r.boostPointsAdded).toBe(67); // Felbermayr's base, added by doubling
+    expect(r.transferPenalty).toBe(0);
+  });
+
+  it("applies the transfer penalty (2 transfers = -10)", () => {
+    const r = scoreUserRound({
+      driverIds: [1, 2, 3, 4],
+      boostDriverId: 1,
+      transfersUsed: 2,
+      wildcard: false,
+      sessionsByDriver,
+    });
+    expect(r.transferPenalty).toBe(10);
+    expect(r.roundPoints).toBe(219);
+  });
+
+  it("waives the penalty under a wildcard", () => {
+    const r = scoreUserRound({
+      driverIds: [1, 2, 3, 4],
+      boostDriverId: 1,
+      transfersUsed: 3,
+      wildcard: true,
+      sessionsByDriver,
+    });
+    expect(r.transferPenalty).toBe(0);
+    expect(r.roundPoints).toBe(229);
   });
 });
