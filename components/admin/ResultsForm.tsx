@@ -83,7 +83,36 @@ export function ResultsForm({
     });
   }
 
+  // Reject duplicate/out-of-range positions before saving.
+  function validate(): string | null {
+    const n = entrants.length;
+    const finishes = new Set<number>();
+    const grids = new Set<number>();
+    for (const e of entrants) {
+      const row = rows[e.driverId];
+      if (row.status === "classified") {
+        if (!row.position) return `Enter a finishing position for ${e.shortName}.`;
+        const pos = Number(row.position);
+        if (pos < 1 || pos > n) return `Finishing position P${pos} is out of range (1–${n}).`;
+        if (finishes.has(pos)) return `Two drivers can't both finish P${pos}.`;
+        finishes.add(pos);
+      }
+      if (!isQuali && row.grid) {
+        const grid = Number(row.grid);
+        if (grid < 1 || grid > n) return `Grid position P${grid} is out of range (1–${n}).`;
+        if (grids.has(grid)) return `Two drivers can't both start P${grid}.`;
+        grids.add(grid);
+      }
+    }
+    return null;
+  }
+
   function save() {
+    const error = validate();
+    if (error) {
+      setResult({ ok: false, error });
+      return;
+    }
     startTransition(async () => {
       const results = entrants.map((e) => {
         const row = rows[e.driverId];
@@ -113,7 +142,12 @@ export function ResultsForm({
         </thead>
         <tbody>
           {entrants.map((e) => {
-            const row = rows[e.driverId];
+            const row = rows[e.driverId] ?? {
+              position: "",
+              grid: "",
+              status: "classified" as Status,
+              fastestLap: false,
+            };
             return (
               <tr key={e.driverId} className="border-b border-border-default last:border-0">
                 <td className="py-2 pr-3">

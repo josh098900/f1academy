@@ -85,35 +85,55 @@ async function incomingPodium(
   return map;
 }
 
-async function priorCumulative(
+// Recompute cumulative_points for the given users across all their rounds, in
+// round order. Keeps cumulative totals correct even when an earlier round is
+// re-scored after later rounds already exist.
+async function recomputeCumulative(
   db: AdminDB,
   seasonId: number,
-  roundNumber: number,
   userIds: string[]
-): Promise<Map<string, number>> {
-  const sum = new Map<string, number>();
-  if (userIds.length === 0) return sum;
-  const { data: priorRounds } = await db
-    .from("rounds")
-    .select("id")
-    .eq("season_id", seasonId)
-    .lt("round_number", roundNumber)
-    .throwOnError();
-  if (priorRounds.length === 0) return sum;
+): Promise<void> {
+  if (userIds.length === 0) return;
 
-  const { data } = await db
+  const { data: rounds } = await db
+    .from("rounds")
+    .select("id, round_number")
+    .eq("season_id", seasonId)
+    .throwOnError();
+  const numberOf = new Map(rounds.map((r) => [r.id, r.round_number]));
+
+  const { data: scores } = await db
     .from("user_scores")
-    .select("user_id, round_points")
+    .select("id, user_id, round_id, round_points, cumulative_points")
+    .in("user_id", userIds)
     .in(
       "round_id",
-      priorRounds.map((r) => r.id)
+      rounds.map((r) => r.id)
     )
-    .in("user_id", userIds)
     .throwOnError();
-  for (const s of data) {
-    sum.set(s.user_id, (sum.get(s.user_id) ?? 0) + s.round_points);
+
+  const byUser = new Map<string, typeof scores>();
+  for (const s of scores) {
+    const list = byUser.get(s.user_id) ?? [];
+    list.push(s);
+    byUser.set(s.user_id, list);
   }
-  return sum;
+
+  for (const list of byUser.values()) {
+    list.sort(
+      (a, b) => (numberOf.get(a.round_id) ?? 0) - (numberOf.get(b.round_id) ?? 0)
+    );
+    let running = 0;
+    for (const s of list) {
+      running += s.round_points;
+      if (s.cumulative_points !== running) {
+        await db
+          .from("user_scores")
+          .update({ cumulative_points: running })
+          .eq("id", s.id);
+      }
+    }
+  }
 }
 
 // Score every saved team for a round and write user_scores. Idempotent —
@@ -165,13 +185,6 @@ export async function scoreRound(roundId: number): Promise<ScoreRoundResult> {
     return { ok: true, scored: 0 };
   }
 
-  const prior = await priorCumulative(
-    db,
-    round.season_id,
-    round.round_number,
-    teams.map((t) => t.user_id)
-  );
-
   const rows = teams.map((t) => {
     const s = scoreUserRound({
       driverIds: t.driver_ids,
@@ -187,7 +200,7 @@ export async function scoreRound(roundId: number): Promise<ScoreRoundResult> {
       round_points: s.roundPoints,
       boost_points_added: s.boostPointsAdded,
       transfer_penalty: s.transferPenalty,
-      cumulative_points: (prior.get(t.user_id) ?? 0) + s.roundPoints,
+      cumulative_points: s.roundPoints, // placeholder — recomputed below
       breakdown: s.breakdown as Json,
     };
   });
@@ -197,6 +210,11 @@ export async function scoreRound(roundId: number): Promise<ScoreRoundResult> {
     .upsert(rows, { onConflict: "user_id,round_id" });
   if (error) return { ok: false, error: error.message };
 
+  await recomputeCumulative(
+    db,
+    round.season_id,
+    teams.map((t) => t.user_id)
+  );
   await markComplete();
   revalidatePath("/admin/score");
   return { ok: true, scored: rows.length };
