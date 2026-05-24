@@ -34,7 +34,11 @@ export async function getActiveRound(supabase: DB): Promise<ActiveRound | null> 
   return data;
 }
 
-export type SavedTeam = { driverIds: number[]; boostDriverId: number };
+export type SavedTeam = {
+  driverIds: number[];
+  boostDriverId: number;
+  wildcardUsed: boolean;
+};
 
 // The user's saved pick for a round, if any (RLS scopes this to the user).
 export async function getUserTeam(
@@ -44,13 +48,70 @@ export async function getUserTeam(
 ): Promise<SavedTeam | null> {
   const { data } = await supabase
     .from("user_teams")
-    .select("driver_ids, boost_driver_id")
+    .select("driver_ids, boost_driver_id, wildcard_used")
     .eq("user_id", userId)
     .eq("round_id", roundId)
     .maybeSingle()
     .throwOnError();
   if (!data) return null;
-  return { driverIds: data.driver_ids, boostDriverId: data.boost_driver_id };
+  return {
+    driverIds: data.driver_ids,
+    boostDriverId: data.boost_driver_id,
+    wildcardUsed: data.wildcard_used,
+  };
+}
+
+export type TransferContext = {
+  baseline: number[] | null; // previous round's squad — the transfer reference
+  baselineBoost: number | null;
+  wildcardUsedInPriorRound: boolean;
+};
+
+// Carry-over context for a round: the most recent prior round's team (the
+// baseline transfers are counted against) and whether the season's wildcard
+// has already been spent in an earlier round.
+export async function getTransferContext(
+  supabase: DB,
+  userId: string,
+  round: Pick<ActiveRound, "season_id" | "round_number">
+): Promise<TransferContext> {
+  const empty: TransferContext = {
+    baseline: null,
+    baselineBoost: null,
+    wildcardUsedInPriorRound: false,
+  };
+
+  const { data: rounds } = await supabase
+    .from("rounds")
+    .select("id, round_number")
+    .eq("season_id", round.season_id)
+    .throwOnError();
+  if (rounds.length === 0) return empty;
+
+  const numberOf = new Map(rounds.map((r) => [r.id, r.round_number]));
+  const { data: teams } = await supabase
+    .from("user_teams")
+    .select("round_id, driver_ids, boost_driver_id, wildcard_used")
+    .eq("user_id", userId)
+    .in(
+      "round_id",
+      rounds.map((r) => r.id)
+    )
+    .throwOnError();
+
+  let best = -1;
+  const ctx: TransferContext = { ...empty };
+  for (const t of teams) {
+    const num = numberOf.get(t.round_id) ?? -1;
+    if (num >= round.round_number) continue; // only prior rounds
+    if (t.wildcard_used) ctx.wildcardUsedInPriorRound = true;
+    if (num > best) {
+      best = num;
+      ctx.baseline = t.driver_ids;
+      ctx.baselineBoost = t.boost_driver_id;
+    }
+  }
+  return ctx;
 }
 
 function surname(fullName: string): string {

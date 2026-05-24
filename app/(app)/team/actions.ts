@@ -2,11 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 
-import { getActiveRound, getRoundLineup } from "@/lib/queries";
+import {
+  getActiveRound,
+  getRoundLineup,
+  getTransferContext,
+} from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
-
-const CAP = 40;
-const SQUAD = 4;
+import { countTransfers, validateTeam } from "@/lib/team-rules";
 
 export type SaveTeamResult = { ok: true } | { ok: false; error: string };
 
@@ -15,6 +17,7 @@ export type SaveTeamResult = { ok: true } | { ok: false; error: string };
 export async function saveTeam(input: {
   driverIds: number[];
   boostDriverId: number;
+  wildcard?: boolean;
 }): Promise<SaveTeamResult> {
   const supabase = await createClient();
   const {
@@ -28,32 +31,19 @@ export async function saveTeam(input: {
     return { ok: false, error: "Selection has locked for this round." };
   }
 
-  const { driverIds, boostDriverId } = input;
-  if (driverIds.length !== SQUAD) {
-    return { ok: false, error: `Pick exactly ${SQUAD} drivers.` };
-  }
-  if (new Set(driverIds).size !== SQUAD) {
-    return { ok: false, error: "You picked the same driver twice." };
-  }
-  if (!driverIds.includes(boostDriverId)) {
-    return { ok: false, error: "Your boost must be one of your drivers." };
-  }
-
-  // Validate against the round's real lineup + prices.
   const lineup = await getRoundLineup(supabase, round);
-  const byId = new Map(lineup.map((d) => [d.driverId, d]));
-  let spent = 0;
-  for (const id of driverIds) {
-    const driver = byId.get(id);
-    if (!driver) {
-      return { ok: false, error: "A selected driver isn't available this round." };
-    }
-    spent += driver.price;
+  const priceOf = (id: number) =>
+    lineup.find((d) => d.driverId === id)?.price;
+
+  const { driverIds, boostDriverId, wildcard = false } = input;
+  const check = validateTeam(driverIds, boostDriverId, priceOf);
+  if (!check.valid) return { ok: false, error: check.errors[0] };
+
+  const ctx = await getTransferContext(supabase, user.id, round);
+  if (wildcard && ctx.wildcardUsedInPriorRound) {
+    return { ok: false, error: "You've already used your wildcard this season." };
   }
-  spent = Math.round(spent * 10) / 10; // prices are 1dp; avoid float drift
-  if (spent > CAP) {
-    return { ok: false, error: `Over budget by £${(spent - CAP).toFixed(1)}M.` };
-  }
+  const transfers = countTransfers(ctx.baseline, driverIds);
 
   const { error } = await supabase.from("user_teams").upsert(
     {
@@ -61,6 +51,8 @@ export async function saveTeam(input: {
       round_id: round.id,
       driver_ids: driverIds,
       boost_driver_id: boostDriverId,
+      transfers_used: transfers,
+      wildcard_used: wildcard,
     },
     { onConflict: "user_id,round_id" }
   );

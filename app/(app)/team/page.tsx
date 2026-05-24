@@ -3,7 +3,12 @@ import { redirect } from "next/navigation";
 import { DriverCard } from "@/components/team/DriverCard";
 import { LockCountdown } from "@/components/team/LockCountdown";
 import { TeamPicker } from "@/components/team/TeamPicker";
-import { getActiveRound, getRoundLineup, getUserTeam } from "@/lib/queries";
+import {
+  getActiveRound,
+  getRoundLineup,
+  getTransferContext,
+  getUserTeam,
+} from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
 
 import { saveTeam } from "./actions";
@@ -30,10 +35,15 @@ export default async function TeamPage() {
     );
   }
 
-  const [lineup, saved] = await Promise.all([
+  const [lineup, saved, transfers] = await Promise.all([
     getRoundLineup(supabase, round),
     getUserTeam(supabase, user.id, round.id),
+    getTransferContext(supabase, user.id, round),
   ]);
+
+  // Prefill: this round's saved team, otherwise carry over the previous round's.
+  const initialSelected = saved?.driverIds ?? transfers.baseline ?? undefined;
+  const initialBoost = saved?.boostDriverId ?? transfers.baselineBoost ?? null;
 
   const locked = round.lock_time
     ? new Date(round.lock_time) <= new Date()
@@ -70,8 +80,11 @@ export default async function TeamPage() {
         ) : (
           <TeamPicker
             lineup={lineup}
-            initialSelected={saved?.driverIds}
-            initialBoost={saved?.boostDriverId}
+            initialSelected={initialSelected}
+            initialBoost={initialBoost}
+            initialWildcard={saved?.wildcardUsed ?? false}
+            baseline={transfers.baseline}
+            wildcardUsedInPriorRound={transfers.wildcardUsedInPriorRound}
             onSave={saveTeam}
           />
         )}
