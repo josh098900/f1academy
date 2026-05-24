@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   countTransfers,
+  resolveWildcard,
   transferPenalty,
   validateTeam,
 } from "../lib/team-rules";
@@ -84,5 +85,44 @@ describe("transferPenalty", () => {
 
   it("waives all penalty under a wildcard", () => {
     expect(transferPenalty(4, true)).toBe(0);
+  });
+});
+
+describe("resolveWildcard", () => {
+  it("is sticky: an existing wildcard on this round stays on (can't be undone)", () => {
+    const res = resolveWildcard({
+      requested: false,
+      existingThisRound: true,
+      usedInPriorRound: false,
+    });
+    expect(res).toEqual({ wildcard: true });
+  });
+
+  it("permits activation when never used", () => {
+    const res = resolveWildcard({
+      requested: true,
+      existingThisRound: false,
+      usedInPriorRound: false,
+    });
+    expect(res).toEqual({ wildcard: true });
+  });
+
+  it("blocks activation when already spent in a prior round", () => {
+    const res = resolveWildcard({
+      requested: true,
+      existingThisRound: false,
+      usedInPriorRound: true,
+    });
+    expect(res.wildcard).toBe(false);
+    expect(res.error).toBe("You've already used your wildcard this season.");
+  });
+
+  it("stays off when not requested and not yet used", () => {
+    const res = resolveWildcard({
+      requested: false,
+      existingThisRound: false,
+      usedInPriorRound: false,
+    });
+    expect(res).toEqual({ wildcard: false });
   });
 });

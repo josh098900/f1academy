@@ -71,3 +71,25 @@ export function transferPenalty(transfers: number, wildcard: boolean): number {
   if (wildcard) return 0;
   return Math.max(0, transfers - FREE_TRANSFERS) * TRANSFER_PENALTY;
 }
+
+// The wildcard is once per season and STICKY once consumed on a round:
+//  - if already used on this round, it stays used (can't be undone by resaving);
+//  - it can't be (re)activated if it was spent in another round.
+// Server-side source of truth — the client must not be able to restore the chip.
+export function resolveWildcard(opts: {
+  requested: boolean;
+  existingThisRound: boolean;
+  usedInPriorRound: boolean;
+}): { wildcard: boolean; error?: string } {
+  if (opts.existingThisRound) return { wildcard: true };
+  if (opts.requested) {
+    if (opts.usedInPriorRound) {
+      return {
+        wildcard: false,
+        error: "You've already used your wildcard this season.",
+      };
+    }
+    return { wildcard: true };
+  }
+  return { wildcard: false };
+}

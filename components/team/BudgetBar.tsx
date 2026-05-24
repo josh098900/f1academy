@@ -28,6 +28,7 @@ export function BudgetBar({ spent, cap }: { spent: number; cap: number }) {
           style={{
             width: `${pct}%`,
             background: over ? "var(--color-danger)" : "var(--color-accent)",
+            animation: over ? "budget-over-pulse 500ms ease-in-out 3" : undefined,
           }}
         />
       </div>
