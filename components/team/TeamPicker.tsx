@@ -208,6 +208,14 @@ export function TeamPicker({
   );
 
   function WildcardChip() {
+    // Already saved this round — sticky, can't be undone.
+    if (saved.wildcard) {
+      return (
+        <span className="rounded-full border border-accent bg-accent px-3 py-1 font-mono text-[10px] tracking-wider text-inverse uppercase">
+          Wildcard active ✓
+        </span>
+      );
+    }
     if (wildcardUsedInPriorRound) {
       return (
         <span className="font-mono text-[10px] tracking-wider text-muted uppercase">
@@ -215,6 +223,7 @@ export function TeamPicker({
         </span>
       );
     }
+    // Activated this session but not yet saved — can still back out.
     if (wildcard) {
       return (
         <button

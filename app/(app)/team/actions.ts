@@ -6,9 +6,14 @@ import {
   getActiveRound,
   getRoundLineup,
   getTransferContext,
+  getUserTeam,
 } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
-import { countTransfers, validateTeam } from "@/lib/team-rules";
+import {
+  countTransfers,
+  resolveWildcard,
+  validateTeam,
+} from "@/lib/team-rules";
 
 export type SaveTeamResult = { ok: true } | { ok: false; error: string };
 
@@ -39,10 +44,20 @@ export async function saveTeam(input: {
   const check = validateTeam(driverIds, boostDriverId, priceOf);
   if (!check.valid) return { ok: false, error: check.errors[0] };
 
-  const ctx = await getTransferContext(supabase, user.id, round);
-  if (wildcard && ctx.wildcardUsedInPriorRound) {
-    return { ok: false, error: "You've already used your wildcard this season." };
-  }
+  const [ctx, existing] = await Promise.all([
+    getTransferContext(supabase, user.id, round),
+    getUserTeam(supabase, user.id, round.id),
+  ]);
+
+  // Wildcard is once per season and sticky once saved on a round — the client
+  // can't restore it by resaving with wildcard=false.
+  const resolved = resolveWildcard({
+    requested: wildcard,
+    existingThisRound: existing?.wildcardUsed ?? false,
+    usedInPriorRound: ctx.wildcardUsedInPriorRound,
+  });
+  if (resolved.error) return { ok: false, error: resolved.error };
+
   const transfers = countTransfers(ctx.baseline, driverIds);
 
   const { error } = await supabase.from("user_teams").upsert(
@@ -52,7 +67,7 @@ export async function saveTeam(input: {
       driver_ids: driverIds,
       boost_driver_id: boostDriverId,
       transfers_used: transfers,
-      wildcard_used: wildcard,
+      wildcard_used: resolved.wildcard,
     },
     { onConflict: "user_id,round_id" }
   );

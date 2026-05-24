@@ -30,14 +30,26 @@ export function DriverCard({
       data-selected={selected}
       role={interactive ? "button" : undefined}
       aria-pressed={interactive ? selected : undefined}
+      tabIndex={interactive && !disabled ? 0 : undefined}
       onClick={interactive && !disabled ? onToggle : undefined}
+      onKeyDown={(e) => {
+        if (!interactive || disabled) return;
+        // Ignore keys on inner controls (e.g. the 2× boost button).
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onToggle?.();
+        }
+      }}
       className={cn(
         "group relative flex items-center gap-4 border bg-surface transition-colors",
         selected
           ? "border-accent ring-1 ring-accent"
           : "border-border-default hover:border-border-strong",
         disabled && !selected && "opacity-40",
-        interactive && !disabled && "cursor-pointer"
+        interactive &&
+          !disabled &&
+          "cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-accent"
       )}
     >
       {/* 4px team-colour bar */}
@@ -45,11 +57,13 @@ export function DriverCard({
         className="absolute top-0 bottom-0 left-0 w-1"
         style={{ background: color }}
       />
+      {/* Hover: subtle accent flash over the left edge */}
+      <div className="pointer-events-none absolute top-0 bottom-0 left-0 w-1 bg-accent opacity-0 transition-opacity group-hover:opacity-100" />
 
       {/* Car number — massive */}
       <div
         data-tabular
-        className="pr-2 pl-6 font-display text-[56px] leading-none text-primary tabular-nums"
+        className="pr-2 pl-6 font-display text-[72px] leading-none text-primary tabular-nums"
       >
         {driver.carNumber ?? "—"}
       </div>

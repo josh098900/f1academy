@@ -19,14 +19,18 @@ export function LockCountdown({ lockTime }: { lockTime: string }) {
   const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
-    const update = () => setNow(Date.now());
-    const raf = requestAnimationFrame(update); // initial value, async (next frame)
+    const update = () => {
+      const time = Date.now();
+      setNow(time);
+      if (time >= target) clearInterval(id); // stop ticking once locked
+    };
     const id = setInterval(update, 1000);
+    const raf = requestAnimationFrame(update); // initial value, async (next frame)
     return () => {
       cancelAnimationFrame(raf);
       clearInterval(id);
     };
-  }, []);
+  }, [target]);
 
   const expired = now !== null && now >= target;
   useEffect(() => {
