@@ -34,6 +34,25 @@ export async function getActiveRound(supabase: DB): Promise<ActiveRound | null> 
   return data;
 }
 
+export type SavedTeam = { driverIds: number[]; boostDriverId: number };
+
+// The user's saved pick for a round, if any (RLS scopes this to the user).
+export async function getUserTeam(
+  supabase: DB,
+  userId: string,
+  roundId: number
+): Promise<SavedTeam | null> {
+  const { data } = await supabase
+    .from("user_teams")
+    .select("driver_ids, boost_driver_id")
+    .eq("user_id", userId)
+    .eq("round_id", roundId)
+    .maybeSingle()
+    .throwOnError();
+  if (!data) return null;
+  return { driverIds: data.driver_ids, boostDriverId: data.boost_driver_id };
+}
+
 function surname(fullName: string): string {
   const parts = fullName.trim().split(/\s+/);
   return parts[parts.length - 1];
