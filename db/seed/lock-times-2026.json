@@ -1,0 +1,6 @@
+{
+  "_note": "PROVISIONAL round lock times (= Qualifying start), ISO 8601 UTC. Replace with the official session schedule when published. Only set for rounds open to picking.",
+  "lockTimes": {
+    "3": "2026-07-04T08:00:00Z"
+  }
+}
