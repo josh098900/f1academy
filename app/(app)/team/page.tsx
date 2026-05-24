@@ -53,7 +53,7 @@ export default async function TeamPage() {
 
       {/* Edge-to-edge, hairline-separated grid (Bloomberg-terminal density). */}
       <section className="py-px">
-        <div className="grid grid-cols-1 gap-px bg-border-default sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-px sm:grid-cols-2 lg:grid-cols-3">
           {lineup.map((d) => (
             <DriverCard key={d.driverId} driver={d} />
           ))}

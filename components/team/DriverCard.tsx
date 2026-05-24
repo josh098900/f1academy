@@ -8,7 +8,7 @@ export function DriverCard({ driver }: { driver: LineupDriver }) {
   const color = teamColor(driver.f1Partner);
 
   return (
-    <article className="group relative flex items-center gap-4 bg-surface">
+    <article className="group relative flex items-center gap-4 border border-border-default bg-surface transition-colors hover:border-border-strong">
       {/* 4px team-colour bar */}
       <div
         className="absolute top-0 bottom-0 left-0 w-1"

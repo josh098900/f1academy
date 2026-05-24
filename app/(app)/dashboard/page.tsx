@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -28,15 +29,22 @@ export default async function DashboardPage() {
       </p>
 
       <p className="mt-8 max-w-md font-body text-sm leading-relaxed text-muted">
-        This is a placeholder. Team selection, leagues, and your Coach insights
-        land here in the coming phases.
+        Leagues and your Coach insights land here in the coming phases.
       </p>
 
-      <form action={signOut} className="mt-8">
-        <Button type="submit" variant="secondary" size="sm">
-          Sign out
-        </Button>
-      </form>
+      <div className="mt-8 flex items-center gap-4">
+        <Link
+          href="/team"
+          className="inline-flex h-10 items-center justify-center rounded-sm bg-accent px-5 font-display text-sm tracking-wider text-inverse uppercase transition-colors hover:bg-accent-hover"
+        >
+          Pick your team
+        </Link>
+        <form action={signOut}>
+          <Button type="submit" variant="ghost" size="sm">
+            Sign out
+          </Button>
+        </form>
+      </div>
     </main>
   );
 }
