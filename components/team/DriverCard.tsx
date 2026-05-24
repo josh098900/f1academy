@@ -34,7 +34,7 @@ export function DriverCard({
       className={cn(
         "group relative flex items-center gap-4 border bg-surface transition-colors",
         selected
-          ? "border-accent"
+          ? "border-accent ring-1 ring-accent"
           : "border-border-default hover:border-border-strong",
         disabled && !selected && "opacity-40",
         interactive && !disabled && "cursor-pointer"
