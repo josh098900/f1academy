@@ -122,6 +122,79 @@ function surname(fullName: string): string {
 export type RoundRow = Database["public"]["Tables"]["rounds"]["Row"];
 export type SessionRow = Database["public"]["Tables"]["sessions"]["Row"];
 
+export type LeagueSummary = {
+  id: number;
+  name: string;
+  inviteCode: string;
+  ownerId: string;
+  memberCount: number;
+};
+
+// Leagues the user belongs to (RLS scopes this to their memberships).
+export async function getUserLeagues(
+  supabase: DB,
+  userId: string
+): Promise<LeagueSummary[]> {
+  const { data } = await supabase
+    .from("league_members")
+    .select(
+      "league:leagues(id, name, invite_code, owner_id, members:league_members(count))"
+    )
+    .eq("user_id", userId)
+    .throwOnError();
+
+  const leagues: LeagueSummary[] = [];
+  for (const row of data) {
+    const l = row.league;
+    if (!l) continue;
+    leagues.push({
+      id: l.id,
+      name: l.name,
+      inviteCode: l.invite_code,
+      ownerId: l.owner_id,
+      memberCount: l.members?.[0]?.count ?? 0,
+    });
+  }
+  return leagues.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function getLeague(
+  supabase: DB,
+  leagueId: number
+): Promise<LeagueSummary | null> {
+  const { data } = await supabase
+    .from("leagues")
+    .select("id, name, invite_code, owner_id, members:league_members(count)")
+    .eq("id", leagueId)
+    .maybeSingle()
+    .throwOnError();
+  if (!data) return null;
+  return {
+    id: data.id,
+    name: data.name,
+    inviteCode: data.invite_code,
+    ownerId: data.owner_id,
+    memberCount: data.members?.[0]?.count ?? 0,
+  };
+}
+
+// League standings via the SECURITY DEFINER projection (members only).
+export async function getLeagueStandings(
+  supabase: DB,
+  leagueId: number
+): Promise<LeaderboardRow[]> {
+  const { data } = await supabase
+    .rpc("league_standings", { p_league: leagueId })
+    .throwOnError();
+  return (data ?? []).map((r) => ({
+    rank: Number(r.rank),
+    userId: r.user_id,
+    displayName: r.display_name,
+    total: r.total,
+    roundsPlayed: 0,
+  }));
+}
+
 export type LeaderboardRow = {
   rank: number;
   userId: string;

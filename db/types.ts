@@ -669,6 +669,13 @@ export type Database = {
         }[]
       }
       is_league_member: { Args: { league: number }; Returns: boolean }
+      join_league: {
+        Args: { p_code: string }
+        Returns: {
+          id: number
+          name: string
+        }[]
+      }
       league_standings: {
         Args: { p_league: number }
         Returns: {
