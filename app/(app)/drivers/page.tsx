@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { PageHeader } from "@/components/PageHeader";
 import { teamColor } from "@/lib/f1-teams";
 import { getActiveRound, getRoundLineup } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
@@ -11,20 +12,18 @@ export default async function DriversPage() {
   const lineup = round ? await getRoundLineup(supabase, round) : [];
 
   return (
-    <main className="min-h-dvh px-6 py-10 sm:px-12">
-      <p className="font-body text-xs tracking-[0.2em] text-secondary uppercase">
-        {round ? `Round ${round.round_number} grid` : "Drivers"}
-      </p>
-      <h1 className="mt-2 font-display text-[clamp(2rem,5vw,3.5rem)] leading-none tracking-wide uppercase">
-        Drivers
-      </h1>
+    <main>
+      <PageHeader
+        eyebrow={round ? `Round ${round.round_number} grid` : "Drivers"}
+        title="Drivers"
+      />
 
       {lineup.length === 0 ? (
-        <p className="mt-6 font-body text-sm text-muted">
+        <p className="px-6 py-10 font-body text-sm text-muted sm:px-12">
           No drivers to show yet.
         </p>
       ) : (
-        <ul className="mt-6 grid grid-cols-1 gap-px sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid grid-cols-1 gap-px p-6 sm:grid-cols-2 sm:px-12 lg:grid-cols-3">
           {lineup.map((d) => (
             <li key={d.driverId}>
               <Link

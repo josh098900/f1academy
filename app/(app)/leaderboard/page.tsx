@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { PageHeader } from "@/components/PageHeader";
 import { LeaderboardTable } from "@/components/leaderboard/LeaderboardTable";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 import { getGlobalLeaderboard } from "@/lib/queries";
@@ -15,16 +16,9 @@ export default async function LeaderboardPage() {
   const rows = await getGlobalLeaderboard(supabase, 100);
 
   return (
-    <main className="min-h-dvh">
+    <main>
       <RealtimeRefresh />
-      <header className="border-b border-border-default px-6 py-6 sm:px-12">
-        <p className="font-body text-xs tracking-[0.2em] text-secondary uppercase">
-          Global · Top 100
-        </p>
-        <h1 className="mt-2 font-display text-[clamp(2rem,5vw,3.5rem)] leading-none tracking-wide uppercase">
-          Leaderboard
-        </h1>
-      </header>
+      <PageHeader eyebrow="Global · Top 100" title="Leaderboard" />
 
       <section className="py-px">
         <LeaderboardTable rows={rows} currentUserId={user.id} />

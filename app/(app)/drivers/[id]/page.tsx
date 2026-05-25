@@ -36,16 +36,16 @@ export default async function DriverPage({
   const color = teamColor(profile.f1Partner);
 
   return (
-    <main className="min-h-dvh">
+    <main>
       <header
         className="relative border-b border-border-default px-6 py-8 sm:px-12"
         style={{ borderLeft: `4px solid ${color}` }}
       >
         <Link
-          href="/team"
+          href="/drivers"
           className="font-mono text-xs tracking-wider text-muted uppercase transition-colors hover:text-secondary"
         >
-          ← Back to team
+          ← All drivers
         </Link>
 
         <div className="mt-4 flex items-center gap-5">

@@ -27,7 +27,7 @@ export default async function TeamPage() {
 
   if (!round) {
     return (
-      <main className="flex min-h-dvh flex-col justify-center px-6 sm:px-12">
+      <main className="px-6 py-20 text-center sm:px-12">
         <h1 className="font-display text-[clamp(2rem,5vw,3.5rem)] tracking-wide uppercase">
           Season Complete
         </h1>
@@ -53,7 +53,7 @@ export default async function TeamPage() {
     : false;
 
   return (
-    <main className="min-h-dvh">
+    <main>
       <header className="border-b border-border-default px-6 py-6 sm:px-12">
         <p className="font-body text-xs tracking-[0.2em] text-secondary uppercase">
           Round {round.round_number} · {round.country}
