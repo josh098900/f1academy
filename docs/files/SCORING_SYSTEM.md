@@ -73,14 +73,14 @@ Imagine a user picks: **Felbermayr (Boost), Palmowski, Gademan, Ferreira**
 
 | Driver | Quali | Race 1 | Race 2 | Bonuses | Total | × Boost |
 |---|---|---|---|---|---|---|
-| Felbermayr | P1: 10 | Win: 25, FL: 5, +0 OT | P2: 18, +1 OT | Pole+Win: 5 | **64** | **128** |
+| Felbermayr | P1: 10 | Win: 25, FL: 5, +0 OT | P2: 18, +1 OT | Pole+Win: 5, Podium streak: 3 | **67** | **134** |
 | Palmowski | P2: 8 | P3: 15, +0 OT | P1: 25, FL: 5, +1 OT | Podium streak: 3 | **57** | 57 |
 | Gademan | P3: 6 | P4: 12, +0 OT | P3: 15, +0 OT | — | **33** | 33 |
 | Ferreira | P6: 3 | P7: 6, +1 OT | DNF: -5 | — | **5** | 5 |
 
-**Round score: 128 + 57 + 33 + 5 = 223 points**
+**Round score: 134 + 57 + 33 + 5 = 229 points**
 
-The boost mechanic alone added 64 points. Picking a "value" driver like Ferreira who DNF'd hurt — but if she'd finished P4, you'd have 50+ points instead of 5. That's the trade-off being engineered.
+Felbermayr scored podiums in both races (P1 then P2), so she gets the podium-streak bonus too. The boost mechanic alone added 67 points (doubling her 67). Picking a "value" driver like Ferreira who DNF'd hurt — but if she'd finished P4, you'd have 50+ points instead of 5. That's the trade-off being engineered.
 
 ## Driver pricing
 
