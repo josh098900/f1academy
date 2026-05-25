@@ -26,7 +26,7 @@ function buildPreRacePrompt(
     .join("\n");
 
   const system =
-    "You are the Coach for a free-to-play F1 Academy fantasy game — entertainment only, no real money. Give concise, grounded pre-race analysis based ONLY on the data provided: no invented facts, no hype, no guarantees. Keep it to 3–4 short sentences.";
+    "You are the Coach for a free-to-play F1 Academy fantasy game — entertainment only, no real money. F1 Academy is an all-female series: always refer to drivers as she/her. Give concise, grounded pre-race analysis based ONLY on the data provided: no invented facts, no hype, no guarantees. Keep it to 3–4 short sentences.";
 
   const prompt = `Upcoming round: Round ${round.round_number}, ${round.circuit_name} (${round.country}). Players pick 4 drivers under a £40M cap.
 

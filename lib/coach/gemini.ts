@@ -23,6 +23,9 @@ export async function generate(
       systemInstruction: system,
       temperature: 0.7,
       maxOutputTokens: 500,
+      // Disable "thinking" — these are short factual insights, and thinking
+      // would otherwise consume the output budget (and free-tier quota).
+      thinkingConfig: { thinkingBudget: 0 },
     },
   });
 
