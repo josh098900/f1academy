@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { PageHeader } from "@/components/PageHeader";
 import { CreateLeagueForm, JoinLeagueForm } from "@/components/leagues/LeagueForms";
 import { getUserLeagues } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
@@ -15,15 +16,10 @@ export default async function LeaguesPage() {
   const leagues = await getUserLeagues(supabase, user.id);
 
   return (
-    <main className="min-h-dvh px-6 py-6 sm:px-12">
-      <p className="font-body text-xs tracking-[0.2em] text-secondary uppercase">
-        Mini-leagues
-      </p>
-      <h1 className="mt-2 font-display text-[clamp(2rem,5vw,3.5rem)] leading-none tracking-wide uppercase">
-        Leagues
-      </h1>
+    <main>
+      <PageHeader eyebrow="Mini-leagues" title="Leagues" />
 
-      <div className="mt-6 grid gap-8 lg:grid-cols-[1fr_320px]">
+      <div className="grid gap-8 px-6 py-6 sm:px-12 lg:grid-cols-[1fr_320px]">
         <div>
           {leagues.length === 0 ? (
             <p className="font-body text-sm text-secondary">

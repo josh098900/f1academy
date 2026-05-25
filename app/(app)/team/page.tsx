@@ -1,8 +1,11 @@
 import { redirect } from "next/navigation";
 
+import { CoachCard } from "@/components/coach/CoachCard";
 import { DriverCard } from "@/components/team/DriverCard";
 import { LockCountdown } from "@/components/team/LockCountdown";
 import { TeamPicker } from "@/components/team/TeamPicker";
+
+import { getPreRaceInsight } from "../coach-actions";
 import {
   getActiveRound,
   getRoundLineup,
@@ -24,7 +27,7 @@ export default async function TeamPage() {
 
   if (!round) {
     return (
-      <main className="flex min-h-dvh flex-col justify-center px-6 sm:px-12">
+      <main className="px-6 py-20 text-center sm:px-12">
         <h1 className="font-display text-[clamp(2rem,5vw,3.5rem)] tracking-wide uppercase">
           Season Complete
         </h1>
@@ -50,7 +53,7 @@ export default async function TeamPage() {
     : false;
 
   return (
-    <main className="min-h-dvh">
+    <main>
       <header className="border-b border-border-default px-6 py-6 sm:px-12">
         <p className="font-body text-xs tracking-[0.2em] text-secondary uppercase">
           Round {round.round_number} · {round.country}
@@ -78,15 +81,20 @@ export default async function TeamPage() {
         {locked ? (
           <LockedTeam lineup={lineup} saved={saved} />
         ) : (
-          <TeamPicker
-            lineup={lineup}
-            initialSelected={initialSelected}
-            initialBoost={initialBoost}
-            initialWildcard={saved?.wildcardUsed ?? false}
-            baseline={transfers.baseline}
-            wildcardUsedInPriorRound={transfers.wildcardUsedInPriorRound}
-            onSave={saveTeam}
-          />
+          <>
+            <div className="px-6 pb-2 sm:px-12">
+              <CoachCard load={getPreRaceInsight} />
+            </div>
+            <TeamPicker
+              lineup={lineup}
+              initialSelected={initialSelected}
+              initialBoost={initialBoost}
+              initialWildcard={saved?.wildcardUsed ?? false}
+              baseline={transfers.baseline}
+              wildcardUsedInPriorRound={transfers.wildcardUsedInPriorRound}
+              onSave={saveTeam}
+            />
+          </>
         )}
       </section>
     </main>

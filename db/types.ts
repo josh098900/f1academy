@@ -44,7 +44,7 @@ export type Database = {
           round_id: number
           target_id: number | null
           tokens_used: number | null
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           content: string
@@ -55,7 +55,7 @@ export type Database = {
           round_id: number
           target_id?: number | null
           tokens_used?: number | null
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           content?: string
@@ -66,7 +66,7 @@ export type Database = {
           round_id?: number
           target_id?: number | null
           tokens_used?: number | null
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {

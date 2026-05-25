@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/db/types";
+import {
+  type DriverSession,
+  type SessionType,
+  scoreDriverWeekend,
+} from "@/lib/scoring";
 
 type DB = SupabaseClient<Database>;
 
@@ -371,4 +376,153 @@ export async function getRoundLineup(
   // Most expensive first — the stars lead the grid.
   lineup.sort((a, b) => b.price - a.price || a.lastName.localeCompare(b.lastName));
   return lineup;
+}
+
+export type DriverRoundResult = {
+  roundNumber: number;
+  circuitName: string;
+  points: number;
+  sessions: { type: SessionType; position: number | null; fastestLap: boolean }[];
+};
+
+export type DriverProfile = {
+  driverId: number;
+  fullName: string;
+  shortName: string;
+  lastName: string;
+  countryCode: string | null;
+  avatarUrl: string | null;
+  wikipediaUrl: string | null;
+  carNumber: number | null;
+  team: string | null;
+  f1Partner: string | null;
+  price: number | null; // active round, if priced
+  seasonPoints: number;
+  history: DriverRoundResult[];
+};
+
+// A driver's season profile: identity, F1-partner entry, current price, and
+// per-round fantasy points from completed rounds. Powers /drivers/[id] and the
+// Coach's driver-take. Reads public tables only.
+export async function getDriverProfile(
+  supabase: DB,
+  driverId: number
+): Promise<DriverProfile | null> {
+  const { data: driver } = await supabase
+    .from("drivers")
+    .select(
+      "id, full_name, short_name, country_code, avatar_url, wikipedia_url"
+    )
+    .eq("id", driverId)
+    .maybeSingle()
+    .throwOnError();
+  if (!driver) return null;
+
+  const season = await getCurrentSeason(supabase);
+
+  const { data: entry } = season
+    ? await supabase
+        .from("season_entries")
+        .select("car_number, f1_partner_team, team:teams(name)")
+        .eq("season_id", season.id)
+        .eq("driver_id", driverId)
+        .maybeSingle()
+        .throwOnError()
+    : { data: null };
+
+  // Current price = the active (next upcoming) round's price, if set.
+  const active = await getActiveRound(supabase);
+  let price: number | null = null;
+  if (active) {
+    const { data: p } = await supabase
+      .from("driver_prices")
+      .select("price_millions")
+      .eq("round_id", active.id)
+      .eq("driver_id", driverId)
+      .maybeSingle()
+      .throwOnError();
+    price = p ? Number(p.price_millions) : null;
+  }
+
+  const history: DriverRoundResult[] = [];
+  let seasonPoints = 0;
+
+  if (season) {
+    const { data: rounds } = await supabase
+      .from("rounds")
+      .select("id, round_number, circuit_name")
+      .eq("season_id", season.id)
+      .eq("status", "complete")
+      .order("round_number", { ascending: true })
+      .throwOnError();
+
+    for (const round of rounds) {
+      const { data: sessions } = await supabase
+        .from("sessions")
+        .select("id, session_type")
+        .eq("round_id", round.id)
+        .throwOnError();
+      if (sessions.length === 0) continue;
+      const typeOf = new Map(sessions.map((s) => [s.id, s.session_type]));
+
+      const { data: results } = await supabase
+        .from("session_results")
+        .select("session_id, position, grid_position, status, fastest_lap")
+        .eq("driver_id", driverId)
+        .in(
+          "session_id",
+          sessions.map((s) => s.id)
+        )
+        .throwOnError();
+      if (results.length === 0) continue;
+
+      const driverSessions: DriverSession[] = [];
+      const summary: DriverRoundResult["sessions"] = [];
+      for (const r of results) {
+        const type = typeOf.get(r.session_id);
+        if (!type) continue;
+        driverSessions.push({
+          type: type as DriverSession["type"],
+          position: r.position,
+          gridPosition: r.grid_position,
+          status: r.status as DriverSession["status"],
+          fastestLap: r.fastest_lap,
+        });
+        summary.push({
+          type: type as SessionType,
+          position: r.position,
+          fastestLap: r.fastest_lap,
+        });
+      }
+
+      const points = scoreDriverWeekend({ sessions: driverSessions }).base;
+      seasonPoints += points;
+      const order = ["qualifying", "race1", "race2", "race3"];
+      summary.sort(
+        (a, b) => order.indexOf(a.type) - order.indexOf(b.type)
+      );
+      history.push({
+        roundNumber: round.round_number,
+        circuitName: round.circuit_name ?? `Round ${round.round_number}`,
+        points,
+        sessions: summary,
+      });
+    }
+  }
+
+  return {
+    driverId: driver.id,
+    fullName: driver.full_name,
+    shortName: driver.short_name,
+    lastName: surname(driver.full_name),
+    countryCode: driver.country_code,
+    avatarUrl: driver.avatar_url,
+    wikipediaUrl: driver.wikipedia_url,
+    carNumber: entry?.car_number ?? null,
+    team: entry?.team?.name ?? null,
+    f1Partner: entry?.f1_partner_team ?? null,
+    price,
+    seasonPoints,
+    history,
+  };
 }
