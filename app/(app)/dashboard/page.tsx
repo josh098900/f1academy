@@ -54,6 +54,12 @@ export default async function DashboardPage() {
           Pick your team
         </Link>
         <Link
+          href="/drivers"
+          className="inline-flex h-10 items-center justify-center rounded-sm border border-border-default px-5 font-display text-sm tracking-wider text-primary uppercase transition-colors hover:border-border-strong"
+        >
+          Drivers
+        </Link>
+        <Link
           href="/leaderboard"
           className="inline-flex h-10 items-center justify-center rounded-sm border border-border-default px-5 font-display text-sm tracking-wider text-primary uppercase transition-colors hover:border-border-strong"
         >

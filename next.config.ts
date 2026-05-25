@@ -2,7 +2,12 @@ import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  images: {
+    remotePatterns: [
+      // DiceBear-generated driver avatars (see scripts/seed.ts).
+      { protocol: "https", hostname: "api.dicebear.com" },
+    ],
+  },
 };
 
 export default withSentryConfig(nextConfig, {

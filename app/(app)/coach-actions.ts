@@ -9,6 +9,7 @@ import {
   type ActiveRound,
   type LineupDriver,
   getActiveRound,
+  getDriverProfile,
   getRoundLineup,
 } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
@@ -89,6 +90,39 @@ Their team's points this round:
 ${lines}
 
 Recap where their points came from — call out the standouts and any that disappointed (especially the boost pick) — and end with a brief forward look.`,
+    })
+  );
+}
+
+// A short scouting take on one driver, grounded in her season form. Global
+// (not per-user), keyed to the active round + driver so it caches per round.
+export async function getDriverTake(driverId: number): Promise<InsightResult> {
+  const supabase = await createClient();
+  const round = await getActiveRound(supabase);
+  if (!round) return { ok: false, error: "No upcoming round." };
+
+  const profile = await getDriverProfile(supabase, driverId);
+  if (!profile) return { ok: false, error: "Driver not found." };
+
+  const form = profile.history.length
+    ? profile.history
+        .map((h) => `R${h.roundNumber} ${h.circuitName}: ${h.points} pts`)
+        .join("\n")
+    : "No completed rounds yet this season.";
+
+  return getOrGenerateInsight(
+    { userId: null, roundId: round.id, kind: "driver_take", targetId: driverId },
+    () => ({
+      system:
+        "You are the Coach for a free-to-play F1 Academy fantasy game (entertainment only). F1 Academy is all-female — use she/her. Give a concise scouting take on ONE driver, grounded ONLY in the data provided: no invented results, no hype, no guarantees. 2–3 short sentences.",
+      prompt: `Driver: ${profile.fullName} (${profile.team ?? "team TBC"}${profile.f1Partner ? `, ${profile.f1Partner}-backed` : ""}).
+${profile.price !== null ? `Fantasy price this round: £${profile.price.toFixed(1)}M.` : "Not priced this round."}
+Season points so far: ${profile.seasonPoints}.
+
+Per-round form:
+${form}
+
+Upcoming: Round ${round.round_number}, ${round.circuit_name} (${round.country}). Give a brief read on her form and whether she looks like value at this price — weigh it up, don't dictate a pick.`,
     })
   );
 }
