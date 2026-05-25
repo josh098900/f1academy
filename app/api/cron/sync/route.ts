@@ -54,11 +54,13 @@ export async function GET(request: Request) {
     (drivers ?? []).map((d) => [d.full_name.toLowerCase(), d.id])
   );
 
+  // All rounds — the per-session "skip if results exist" check below prevents
+  // reprocessing, and rounds Wikipedia has no data for are skipped anyway. This
+  // also backfills rounds already marked complete that are missing results.
   const { data: rounds } = await db
     .from("rounds")
     .select("id, round_number")
     .eq("season_id", season.id)
-    .neq("status", "complete")
     .order("round_number");
 
   const synced: { round: number; applied: number; scored: number }[] = [];
