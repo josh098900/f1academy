@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { saveSessionResults } from "./actions";
+import { importRaceSession, saveSessionResults } from "./actions";
 import { ResultsForm } from "@/components/admin/ResultsForm";
 import {
   getAllRounds,
@@ -110,11 +110,13 @@ export default async function ResultsPage({
             </p>
             <ResultsForm
               key={session.id}
+              roundId={round.id}
               sessionId={session.id}
               sessionType={session.session_type}
               entrants={entrants}
               existing={existing}
               onSave={saveSessionResults}
+              onImport={importRaceSession}
             />
           </>
         ) : (

@@ -2,7 +2,10 @@
 
 import { useState, useTransition } from "react";
 
-import type { SaveResultsResult } from "@/app/admin/results/actions";
+import type {
+  ImportResult,
+  SaveResultsResult,
+} from "@/app/admin/results/actions";
 import { Button } from "@/components/ui/button";
 import type { Entrant, ResultRow } from "@/lib/queries";
 
@@ -26,12 +29,15 @@ const inputClass =
   "h-8 w-16 rounded-sm border border-border-default bg-surface px-2 text-center font-mono text-sm text-primary tabular-nums focus:border-border-strong focus:outline-none";
 
 export function ResultsForm({
+  roundId,
   sessionId,
   sessionType,
   entrants,
   existing,
   onSave,
+  onImport,
 }: {
+  roundId: number;
   sessionId: number;
   sessionType: string;
   entrants: Entrant[];
@@ -46,6 +52,7 @@ export function ResultsForm({
       fastestLap: boolean;
     }[];
   }) => Promise<SaveResultsResult>;
+  onImport: (roundId: number, sessionType: string) => Promise<ImportResult>;
 }) {
   const isQuali = sessionType === "qualifying";
   const byDriver = new Map(existing.map((r) => [r.driverId, r]));
@@ -64,11 +71,44 @@ export function ResultsForm({
     return init;
   });
   const [result, setResult] = useState<SaveResultsResult | null>(null);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const [pending, startTransition] = useTransition();
 
   function update(driverId: number, patch: Partial<RowState>) {
     setResult(null);
+    setImportMsg(null);
     setRows((prev) => ({ ...prev, [driverId]: { ...prev[driverId], ...patch } }));
+  }
+
+  // Pull this race's results from Wikipedia + derived grid into the form for
+  // review (the admin still saves).
+  async function importFromWiki() {
+    setResult(null);
+    setImportMsg(null);
+    setImporting(true);
+    const res = await onImport(roundId, sessionType);
+    setImporting(false);
+    if (!res.ok) {
+      setResult({ ok: false, error: res.error });
+      return;
+    }
+    setRows((prev) => {
+      const next = { ...prev };
+      for (const r of res.results) {
+        next[r.driverId] = {
+          position: r.position?.toString() ?? "",
+          grid: r.gridPosition?.toString() ?? "",
+          status: r.status,
+          fastestLap: r.fastestLap,
+        };
+      }
+      return next;
+    });
+    const unmatched = res.unmatched.length
+      ? ` · unmatched: ${res.unmatched.join(", ")}`
+      : "";
+    setImportMsg(`Imported ${res.results.length} from Wikipedia — review & save${unmatched}`);
   }
 
   // Only one fastest lap per race.
@@ -218,7 +258,10 @@ export function ResultsForm({
         </tbody>
       </table>
 
-      <div className="fixed inset-x-0 bottom-0 z-10 flex items-center justify-end gap-4 border-t border-border-default bg-elevated px-6 py-4 sm:px-12">
+      <div className="fixed inset-x-0 bottom-0 z-10 flex flex-wrap items-center justify-end gap-x-4 gap-y-2 border-t border-border-default bg-elevated px-6 py-4 sm:px-12">
+        {importMsg ? (
+          <span className="font-body text-sm text-secondary">{importMsg}</span>
+        ) : null}
         {result ? (
           <span
             className={`font-body text-sm ${result.ok ? "text-success" : "text-danger"}`}
@@ -226,7 +269,16 @@ export function ResultsForm({
             {result.ok ? "Results saved ✓" : result.error}
           </span>
         ) : null}
-        <Button onClick={save} disabled={pending}>
+        {!isQuali ? (
+          <Button
+            variant="secondary"
+            onClick={importFromWiki}
+            disabled={importing || pending}
+          >
+            {importing ? "Importing…" : "Import from Wikipedia"}
+          </Button>
+        ) : null}
+        <Button onClick={save} disabled={pending || importing}>
           {pending ? "Saving…" : "Save results"}
         </Button>
       </div>
