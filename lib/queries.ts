@@ -122,6 +122,32 @@ function surname(fullName: string): string {
 export type RoundRow = Database["public"]["Tables"]["rounds"]["Row"];
 export type SessionRow = Database["public"]["Tables"]["sessions"]["Row"];
 
+export type LeaderboardRow = {
+  rank: number;
+  userId: string;
+  displayName: string;
+  total: number;
+  roundsPlayed: number;
+};
+
+// Global standings (top N by cumulative points) — via the SECURITY DEFINER
+// projection, so it can rank all players without exposing the users table.
+export async function getGlobalLeaderboard(
+  supabase: DB,
+  limit = 100
+): Promise<LeaderboardRow[]> {
+  const { data } = await supabase
+    .rpc("global_leaderboard", { p_limit: limit })
+    .throwOnError();
+  return (data ?? []).map((r) => ({
+    rank: Number(r.rank),
+    userId: r.user_id,
+    displayName: r.display_name,
+    total: r.total,
+    roundsPlayed: Number(r.rounds_played),
+  }));
+}
+
 export async function getCurrentSeason(supabase: DB) {
   const { data } = await supabase
     .from("seasons")
