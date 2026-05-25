@@ -1,8 +1,11 @@
 import { redirect } from "next/navigation";
 
+import { CoachCard } from "@/components/coach/CoachCard";
 import { DriverCard } from "@/components/team/DriverCard";
 import { LockCountdown } from "@/components/team/LockCountdown";
 import { TeamPicker } from "@/components/team/TeamPicker";
+
+import { getPreRaceInsight } from "../coach-actions";
 import {
   getActiveRound,
   getRoundLineup,
@@ -78,15 +81,20 @@ export default async function TeamPage() {
         {locked ? (
           <LockedTeam lineup={lineup} saved={saved} />
         ) : (
-          <TeamPicker
-            lineup={lineup}
-            initialSelected={initialSelected}
-            initialBoost={initialBoost}
-            initialWildcard={saved?.wildcardUsed ?? false}
-            baseline={transfers.baseline}
-            wildcardUsedInPriorRound={transfers.wildcardUsedInPriorRound}
-            onSave={saveTeam}
-          />
+          <>
+            <div className="px-6 pb-2 sm:px-12">
+              <CoachCard load={getPreRaceInsight} />
+            </div>
+            <TeamPicker
+              lineup={lineup}
+              initialSelected={initialSelected}
+              initialBoost={initialBoost}
+              initialWildcard={saved?.wildcardUsed ?? false}
+              baseline={transfers.baseline}
+              wildcardUsedInPriorRound={transfers.wildcardUsedInPriorRound}
+              onSave={saveTeam}
+            />
+          </>
         )}
       </section>
     </main>
