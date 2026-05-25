@@ -658,7 +658,33 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      global_leaderboard: {
+        Args: { p_limit?: number }
+        Returns: {
+          display_name: string
+          rank: number
+          rounds_played: number
+          total: number
+          user_id: string
+        }[]
+      }
       is_league_member: { Args: { league: number }; Returns: boolean }
+      join_league: {
+        Args: { p_code: string }
+        Returns: {
+          id: number
+          name: string
+        }[]
+      }
+      league_standings: {
+        Args: { p_league: number }
+        Returns: {
+          display_name: string
+          rank: number
+          total: number
+          user_id: string
+        }[]
+      }
       shares_league_with: { Args: { target: string }; Returns: boolean }
     }
     Enums: {
