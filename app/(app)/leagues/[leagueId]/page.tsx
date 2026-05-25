@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 
 import { LeaderboardTable } from "@/components/leaderboard/LeaderboardTable";
+import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 import { LeaveButton } from "@/components/leagues/LeaveButton";
 import { getLeague, getLeagueStandings } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
@@ -28,6 +29,7 @@ export default async function LeaguePage({
 
   return (
     <main className="min-h-dvh">
+      <RealtimeRefresh />
       <header className="border-b border-border-default px-6 py-6 sm:px-12">
         <p className="font-body text-xs tracking-[0.2em] text-secondary uppercase">
           League
