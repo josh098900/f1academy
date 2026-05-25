@@ -38,6 +38,61 @@ Give a brief pre-race read: highlight 2–3 drivers worth considering this round
   return { system, prompt };
 }
 
+type Breakdown = {
+  drivers: { driverId: number; total: number; boosted: boolean }[];
+};
+
+// The user's most recent scored round, with their team's per-driver points.
+export async function getLatestRecap(): Promise<InsightResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "You're not signed in." };
+
+  const { data: scores } = await supabase
+    .from("user_scores")
+    .select(
+      "round_id, round_points, cumulative_points, breakdown, round:rounds(round_number, circuit_name)"
+    )
+    .eq("user_id", user.id)
+    .throwOnError();
+
+  const latest = (scores ?? [])
+    .filter((s) => s.round)
+    .sort((a, b) => (b.round!.round_number ?? 0) - (a.round!.round_number ?? 0))[0];
+  if (!latest) return { ok: false, error: "No scored rounds yet." };
+
+  const breakdown = (latest.breakdown as Breakdown | null) ?? { drivers: [] };
+  const driverIds = breakdown.drivers.map((d) => d.driverId);
+  const { data: drivers } = await supabase
+    .from("drivers")
+    .select("id, short_name")
+    .in("id", driverIds.length ? driverIds : [-1]);
+  const nameOf = new Map((drivers ?? []).map((d) => [d.id, d.short_name]));
+
+  const lines = breakdown.drivers
+    .map(
+      (d) =>
+        `${nameOf.get(d.driverId) ?? "Driver"}: ${d.total} pts${d.boosted ? " (boosted 2x)" : ""}`
+    )
+    .join("\n");
+
+  return getOrGenerateInsight(
+    { userId: user.id, roundId: latest.round_id, kind: "post_race", targetId: null },
+    () => ({
+      system:
+        "You are the Coach for a free-to-play F1 Academy fantasy game (entertainment only). F1 Academy is all-female — use she/her for drivers. Write a short, personal, encouraging post-race recap grounded ONLY in the numbers given. 3-4 sentences, no hype.",
+      prompt: `Round ${latest.round!.round_number} at ${latest.round!.circuit_name}. The player scored ${latest.round_points} points this round (season total ${latest.cumulative_points}).
+
+Their team's points this round:
+${lines}
+
+Recap where their points came from — call out the standouts and any that disappointed (especially the boost pick) — and end with a brief forward look.`,
+    })
+  );
+}
+
 export async function getPreRaceInsight(): Promise<InsightResult> {
   const supabase = await createClient();
   const {

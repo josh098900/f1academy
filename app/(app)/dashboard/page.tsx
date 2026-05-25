@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { CoachCard } from "@/components/coach/CoachCard";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 
+import { getLatestRecap } from "../coach-actions";
 import { signOut } from "./actions";
 
 export default async function DashboardPage() {
@@ -15,6 +17,12 @@ export default async function DashboardPage() {
   if (!user) {
     redirect("/login");
   }
+
+  // Only surface the post-race recap once the player has a scored round.
+  const { count: scoredRounds } = await supabase
+    .from("user_scores")
+    .select("round_id", { count: "exact", head: true })
+    .eq("user_id", user.id);
 
   return (
     <main className="flex min-h-dvh flex-col px-6 py-10 sm:px-12">
@@ -28,9 +36,15 @@ export default async function DashboardPage() {
         Signed in as <span className="text-primary">{user.email}</span>
       </p>
 
-      <p className="mt-8 max-w-md font-body text-sm leading-relaxed text-muted">
-        Leagues and your Coach insights land here in the coming phases.
-      </p>
+      {scoredRounds ? (
+        <div className="mt-8 max-w-md">
+          <CoachCard load={getLatestRecap} title="Your last round" />
+        </div>
+      ) : (
+        <p className="mt-8 max-w-md font-body text-sm leading-relaxed text-muted">
+          Pick a team and the Coach will recap how you did after each round.
+        </p>
+      )}
 
       <div className="mt-8 flex items-center gap-4">
         <Link
