@@ -63,14 +63,14 @@ export function DriverCard({
       {/* Car number — massive */}
       <div
         data-tabular
-        className="pr-2 pl-6 font-display text-[72px] leading-none text-primary tabular-nums"
+        className="pr-1 pl-4 font-display text-[52px] leading-none text-primary tabular-nums sm:pr-2 sm:pl-6 sm:text-[72px]"
       >
         {driver.carNumber ?? "—"}
       </div>
 
       {/* Name + meta */}
       <div className="min-w-0 flex-1 py-3">
-        <div className="truncate font-display text-xl tracking-wide text-primary uppercase">
+        <div className="truncate font-display text-lg tracking-wide text-primary uppercase sm:text-xl">
           {driver.lastName}
         </div>
         <div className="mt-0.5 truncate font-body text-xs tracking-wider text-secondary uppercase">
@@ -102,7 +102,7 @@ export function DriverCard({
       {/* Price — mono, right-aligned */}
       <div
         data-tabular
-        className="px-6 font-mono text-lg text-primary tabular-nums"
+        className="px-4 font-mono text-base text-primary tabular-nums sm:px-6 sm:text-lg"
       >
         £{driver.price.toFixed(1)}M
       </div>

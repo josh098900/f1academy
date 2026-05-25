@@ -141,7 +141,7 @@ export function TeamPicker({
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-px pb-44 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-px pb-56 sm:grid-cols-2 sm:pb-32 lg:grid-cols-3">
         {lineup.map((d) => (
           <DriverCard
             key={d.driverId}
@@ -155,14 +155,15 @@ export function TeamPicker({
         ))}
       </div>
 
-      {/* Sticky action bar — thumb-reachable, solid (no glassmorphism). */}
-      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border-default bg-elevated px-6 py-4 sm:px-12">
-        <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* Sticky action bar — thumb-reachable, solid (no glassmorphism). Sits
+          above the mobile tab bar; flush to the bottom on desktop. */}
+      <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-20 border-t border-border-default bg-elevated px-6 py-3 sm:bottom-0 sm:px-12 sm:py-4">
+        <div className="mx-auto flex max-w-5xl flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="sm:w-56">
             <BudgetBar spent={spent} cap={BUDGET_CAP} />
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 font-mono text-xs tracking-wider uppercase">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs tracking-wider uppercase">
             <span className={full ? "text-success" : "text-secondary"}>
               {selected.length}/{SQUAD_SIZE} picked
             </span>
@@ -182,10 +183,10 @@ export function TeamPicker({
                 ) : null}
               </span>
             ) : null}
+            {hasBaseline ? <WildcardChip /> : null}
           </div>
 
-          <div className="flex items-center gap-3">
-            {hasBaseline ? <WildcardChip /> : null}
+          <div className="flex items-center justify-between gap-3 sm:justify-end">
             <span className={cn("font-body text-sm", messageTone)}>{message}</span>
             <Button onClick={save} disabled={!valid || pending || !dirty}>
               {pending ? "Saving…" : dirty ? "Save team" : "Saved"}
@@ -259,7 +260,7 @@ function ConfirmWildcard({
       role="dialog"
       aria-modal="true"
       aria-label="Play your wildcard"
-      className="fixed inset-0 z-20 flex items-center justify-center bg-base/80 px-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-base/80 px-6"
       onClick={onCancel}
     >
       <div
