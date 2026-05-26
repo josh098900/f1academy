@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, LogOut } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -9,6 +9,7 @@ import { getActiveRound, getUserTeam } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
 
 import { getLatestRecap } from "../coach-actions";
+import { signOut } from "./actions";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -87,6 +88,22 @@ export default async function DashboardPage() {
             Pick a team and the Coach will recap how you did after each round.
           </p>
         )}
+
+        {/* Account — mobile only (desktop has sign-out in the top bar). */}
+        <section className="border-t border-border-default pt-6 sm:hidden">
+          <p className="font-mono text-xs text-muted">
+            Signed in as <span className="text-secondary">{user.email}</span>
+          </p>
+          <form action={signOut} className="mt-3">
+            <button
+              type="submit"
+              className="inline-flex items-center gap-2 rounded-sm border border-border-default px-4 py-2 font-display text-sm tracking-wider text-secondary uppercase transition-colors hover:border-border-strong hover:text-primary"
+            >
+              <LogOut className="size-4" />
+              Sign out
+            </button>
+          </form>
+        </section>
       </div>
     </main>
   );
