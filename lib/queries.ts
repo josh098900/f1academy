@@ -226,6 +226,21 @@ export async function getGlobalLeaderboard(
   }));
 }
 
+// Whether the player has opted in to AI Coach insights. Default off — they
+// turn it on from the Home account section.
+export async function getCoachEnabled(
+  supabase: DB,
+  userId: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("users")
+    .select("coach_enabled")
+    .eq("id", userId)
+    .maybeSingle()
+    .throwOnError();
+  return data?.coach_enabled ?? false;
+}
+
 export async function getCurrentSeason(supabase: DB) {
   const { data } = await supabase
     .from("seasons")

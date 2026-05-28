@@ -3,8 +3,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CoachCard } from "@/components/coach/CoachCard";
+import { CoachOptIn } from "@/components/coach/CoachOptIn";
 import { teamColor } from "@/lib/f1-teams";
-import { type DriverRoundResult, getDriverProfile } from "@/lib/queries";
+import {
+  type DriverRoundResult,
+  getCoachEnabled,
+  getDriverProfile,
+} from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
 
 import { getDriverTake } from "../../coach-actions";
@@ -30,7 +35,13 @@ export default async function DriverPage({
   if (!Number.isInteger(driverId)) notFound();
 
   const supabase = await createClient();
-  const profile = await getDriverProfile(supabase, driverId);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const [profile, coachEnabled] = await Promise.all([
+    getDriverProfile(supabase, driverId),
+    user ? getCoachEnabled(supabase, user.id) : Promise.resolve(false),
+  ]);
   if (!profile) notFound();
 
   const color = teamColor(profile.f1Partner);
@@ -98,7 +109,11 @@ export default async function DriverPage({
       </header>
 
       <section className="px-6 py-6 sm:px-12">
-        <CoachCard load={getDriverTake.bind(null, driverId)} title="Coach's Take" />
+        {coachEnabled ? (
+          <CoachCard load={getDriverTake.bind(null, driverId)} title="Coach's Take" />
+        ) : (
+          <CoachOptIn body={`The Coach can give you a quick AI scouting read on ${profile.lastName} — grounded in her price and form this season.`} />
+        )}
       </section>
 
       <section className="px-6 pb-12 sm:px-12">

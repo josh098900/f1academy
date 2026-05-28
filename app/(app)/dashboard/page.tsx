@@ -4,8 +4,10 @@ import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/PageHeader";
 import { CoachCard } from "@/components/coach/CoachCard";
+import { CoachOptIn } from "@/components/coach/CoachOptIn";
+import { CoachToggle } from "@/components/coach/CoachToggle";
 import { LockCountdown } from "@/components/team/LockCountdown";
-import { getActiveRound, getUserTeam } from "@/lib/queries";
+import { getActiveRound, getCoachEnabled, getUserTeam } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
 
 import { getLatestRecap } from "../coach-actions";
@@ -19,12 +21,13 @@ export default async function DashboardPage() {
   if (!user) redirect("/login");
 
   const round = await getActiveRound(supabase);
-  const [saved, scored] = await Promise.all([
+  const [saved, scored, coachEnabled] = await Promise.all([
     round ? getUserTeam(supabase, user.id, round.id) : Promise.resolve(null),
     supabase
       .from("user_scores")
       .select("round_id", { count: "exact", head: true })
       .eq("user_id", user.id),
+    getCoachEnabled(supabase, user.id),
   ]);
   const scoredRounds = scored.count ?? 0;
   const locked = round?.lock_time
@@ -81,7 +84,14 @@ export default async function DashboardPage() {
         {/* Post-race recap — only once the player has a scored round. */}
         {scoredRounds ? (
           <div className="max-w-2xl">
-            <CoachCard load={getLatestRecap} title="Your last round" />
+            {coachEnabled ? (
+              <CoachCard load={getLatestRecap} title="Your last round" />
+            ) : (
+              <CoachOptIn
+                title="Your last round"
+                body="The Coach can recap your last round — what scored, what didn't, and where the boost landed."
+              />
+            )}
           </div>
         ) : (
           <p className="max-w-md font-body text-sm leading-relaxed text-muted">
@@ -89,12 +99,13 @@ export default async function DashboardPage() {
           </p>
         )}
 
-        {/* Account — mobile only (desktop has sign-out in the top bar). */}
-        <section className="border-t border-border-default pt-6 sm:hidden">
+        {/* Account + preferences. Sign-out is mobile-only (desktop top bar). */}
+        <section className="max-w-2xl space-y-5 border-t border-border-default pt-6">
           <p className="font-mono text-xs text-muted">
             Signed in as <span className="text-secondary">{user.email}</span>
           </p>
-          <form action={signOut} className="mt-3">
+          <CoachToggle enabled={coachEnabled} />
+          <form action={signOut} className="sm:hidden">
             <button
               type="submit"
               className="inline-flex items-center gap-2 rounded-sm border border-border-default px-4 py-2 font-display text-sm tracking-wider text-secondary uppercase transition-colors hover:border-border-strong hover:text-primary"
