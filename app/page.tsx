@@ -1,32 +1,67 @@
 import Link from "next/link";
 
-export default function Home() {
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
+import { LockCountdown } from "@/components/team/LockCountdown";
+import { getActiveRound } from "@/lib/queries";
+import { createClient } from "@/lib/supabase/server";
+
+export default async function Home() {
+  // rounds RLS is public-readable so this works for unauthenticated visitors.
+  const supabase = await createClient();
+  const round = await getActiveRound(supabase);
+
   return (
     <main className="flex min-h-dvh flex-col">
       <header className="flex items-center justify-end px-6 py-5 sm:px-12">
         <Link
           href="/login"
-          className="font-display text-sm uppercase tracking-wider text-secondary transition-colors hover:text-primary"
+          className="font-display text-sm tracking-wider text-secondary uppercase transition-colors hover:text-primary"
         >
           Sign in
         </Link>
       </header>
+
       <section className="flex flex-1 flex-col justify-center px-6 sm:px-12">
-        <p className="font-body text-xs uppercase tracking-[0.2em] text-secondary">
+        <p className="font-body text-xs tracking-[0.2em] text-secondary uppercase">
           Fantasy League · F1 Academy · 2026 Season
         </p>
-        <h1 className="mt-4 font-display uppercase leading-[0.85] tracking-wide text-[clamp(4rem,12vw,8rem)]">
+        <h1 className="mt-4 font-display text-[clamp(4rem,12vw,8rem)] leading-[0.85] tracking-wide uppercase">
           Academy
           <br />
           <span className="text-accent">Fantasy</span>
         </h1>
         <p className="mt-6 max-w-md font-body text-base leading-relaxed text-secondary">
-          Pick four drivers. Spend your budget. Boost your star. Score across
-          every race weekend and climb your mini-league.
+          Pick four drivers. Boost your star. Score across every weekend.
+          Climb leagues with friends.
         </p>
-        <p className="mt-8 font-mono text-xs uppercase tracking-wider text-muted">
-          Building toward Silverstone — 3–5 July 2026
-        </p>
+
+        {round ? (
+          <div className="mt-8 space-y-2">
+            <p className="font-mono text-xs tracking-wider text-muted uppercase">
+              Next round · R{round.round_number} ·{" "}
+              <span className="text-secondary">{round.circuit_name}</span>
+            </p>
+            {round.lock_time ? (
+              <LockCountdown lockTime={round.lock_time} />
+            ) : (
+              <p className="font-mono text-2xl text-muted tabular-nums">Locks TBC</p>
+            )}
+          </div>
+        ) : (
+          <p className="mt-8 font-mono text-xs tracking-wider text-muted uppercase">
+            Season complete
+          </p>
+        )}
+
+        <div className="mt-10 flex flex-col items-start gap-3">
+          <GoogleSignInButton />
+          <Link
+            href="/login"
+            className="font-body text-sm text-secondary underline-offset-4 transition-colors hover:text-primary hover:underline"
+          >
+            Use email instead →
+          </Link>
+        </div>
       </section>
 
       <footer className="border-t border-border-default px-6 py-6 sm:px-12">
