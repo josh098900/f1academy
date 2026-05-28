@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { CoachCard } from "@/components/coach/CoachCard";
 import { CoachOptIn } from "@/components/coach/CoachOptIn";
+import { getCurrentUser } from "@/lib/auth";
 import { teamColor } from "@/lib/f1-teams";
 import {
   type DriverRoundResult,
@@ -35,9 +36,7 @@ export default async function DriverPage({
   if (!Number.isInteger(driverId)) notFound();
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   const [profile, coachEnabled] = await Promise.all([
     getDriverProfile(supabase, driverId),
     user ? getCoachEnabled(supabase, user.id) : Promise.resolve(false),

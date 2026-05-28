@@ -3,15 +3,14 @@ import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/PageHeader";
 import { CreateLeagueForm, JoinLeagueForm } from "@/components/leagues/LeagueForms";
+import { getCurrentUser } from "@/lib/auth";
 import { getUserLeagues } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function LeaguesPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
+  const supabase = await createClient();
 
   const leagues = await getUserLeagues(supabase, user.id);
 

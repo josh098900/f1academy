@@ -7,6 +7,7 @@ import { LockCountdown } from "@/components/team/LockCountdown";
 import { TeamPicker } from "@/components/team/TeamPicker";
 
 import { getPreRaceInsight } from "../coach-actions";
+import { getCurrentUser } from "@/lib/auth";
 import {
   getActiveRound,
   getCoachEnabled,
@@ -19,11 +20,9 @@ import { createClient } from "@/lib/supabase/server";
 import { saveTeam } from "./actions";
 
 export default async function TeamPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
+  const supabase = await createClient();
 
   const round = await getActiveRound(supabase);
 
