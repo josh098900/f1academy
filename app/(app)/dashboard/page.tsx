@@ -7,6 +7,7 @@ import { CoachCard } from "@/components/coach/CoachCard";
 import { CoachOptIn } from "@/components/coach/CoachOptIn";
 import { CoachToggle } from "@/components/coach/CoachToggle";
 import { LockCountdown } from "@/components/team/LockCountdown";
+import { getCurrentUser } from "@/lib/auth";
 import { getActiveRound, getCoachEnabled, getUserTeam } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
 
@@ -14,11 +15,9 @@ import { getLatestRecap } from "../coach-actions";
 import { signOut } from "./actions";
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
+  const supabase = await createClient();
 
   const round = await getActiveRound(supabase);
   const [saved, scored, coachEnabled] = await Promise.all([

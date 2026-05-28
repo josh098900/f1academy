@@ -5,6 +5,7 @@ import { LeaderboardTable } from "@/components/leaderboard/LeaderboardTable";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 import { CopyCode } from "@/components/leagues/CopyCode";
 import { LeaveButton } from "@/components/leagues/LeaveButton";
+import { getCurrentUser } from "@/lib/auth";
 import { getLeague, getLeagueStandings } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
 
@@ -17,11 +18,9 @@ export default async function LeaguePage({
   const id = Number(leagueId);
   if (!Number.isInteger(id)) notFound();
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
+  const supabase = await createClient();
 
   // RLS: non-members can't read the league, so this is null for them.
   const league = await getLeague(supabase, id);
