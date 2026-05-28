@@ -1,13 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 
 type Status = "idle" | "sending" | "sent" | "error";
 
+// Friendly text for each ?error= code the auth callbacks redirect with.
+const URL_ERROR_MESSAGES: Record<string, string> = {
+  link_expired:
+    "That sign-in link has expired or already been used. Send a new one below.",
+  link_invalid:
+    "That sign-in link was malformed. Send a new one below.",
+  auth: "Couldn't finish signing you in. Try again below.",
+};
+
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginInner />
+    </Suspense>
+  );
+}
+
+function LoginInner() {
+  const params = useSearchParams();
+  const urlError = params.get("error");
+  const urlErrorMessage = urlError
+    ? (URL_ERROR_MESSAGES[urlError] ?? URL_ERROR_MESSAGES.auth)
+    : null;
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +77,15 @@ export default function LoginPage() {
         <h1 className="mt-3 font-display uppercase leading-none tracking-wide text-[clamp(2.5rem,6vw,4rem)]">
           Sign In
         </h1>
+
+        {urlErrorMessage && status !== "sent" ? (
+          <p
+            role="alert"
+            className="mt-6 border-l-2 border-danger bg-danger/[0.06] px-3 py-2 font-body text-xs text-danger"
+          >
+            {urlErrorMessage}
+          </p>
+        ) : null}
 
         {status === "sent" ? (
           <p className="mt-6 font-body text-sm leading-relaxed text-primary">
