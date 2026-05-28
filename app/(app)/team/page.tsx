@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { CoachCard } from "@/components/coach/CoachCard";
+import { CoachOptIn } from "@/components/coach/CoachOptIn";
 import { DriverCard } from "@/components/team/DriverCard";
 import { LockCountdown } from "@/components/team/LockCountdown";
 import { TeamPicker } from "@/components/team/TeamPicker";
@@ -8,6 +9,7 @@ import { TeamPicker } from "@/components/team/TeamPicker";
 import { getPreRaceInsight } from "../coach-actions";
 import {
   getActiveRound,
+  getCoachEnabled,
   getRoundLineup,
   getTransferContext,
   getUserTeam,
@@ -38,10 +40,11 @@ export default async function TeamPage() {
     );
   }
 
-  const [lineup, saved, transfers] = await Promise.all([
+  const [lineup, saved, transfers, coachEnabled] = await Promise.all([
     getRoundLineup(supabase, round),
     getUserTeam(supabase, user.id, round.id),
     getTransferContext(supabase, user.id, round),
+    getCoachEnabled(supabase, user.id),
   ]);
 
   // Prefill: this round's saved team, otherwise carry over the previous round's.
@@ -83,7 +86,11 @@ export default async function TeamPage() {
         ) : (
           <>
             <div className="px-6 pb-2 sm:px-12">
-              <CoachCard load={getPreRaceInsight} />
+              {coachEnabled ? (
+                <CoachCard load={getPreRaceInsight} />
+              ) : (
+                <CoachOptIn body="The Coach can give you a quick AI read on the round — drivers worth considering by price and form." />
+              )}
             </div>
             <TeamPicker
               lineup={lineup}

@@ -620,6 +620,7 @@ export type Database = {
       }
       users: {
         Row: {
+          coach_enabled: boolean
           created_at: string
           display_name: string
           favourite_team_id: number | null
@@ -628,6 +629,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          coach_enabled?: boolean
           created_at?: string
           display_name: string
           favourite_team_id?: number | null
@@ -636,6 +638,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          coach_enabled?: boolean
           created_at?: string
           display_name?: string
           favourite_team_id?: number | null

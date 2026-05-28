@@ -1,5 +1,7 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+
 import {
   getOrGenerateInsight,
   type InsightResult,
@@ -13,6 +15,25 @@ import {
   getRoundLineup,
 } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
+
+// Toggle the player's per-user Coach preference. Updates via the user client so
+// RLS (own-row only) enforces ownership; revalidates the (app) layout so every
+// Coach surface picks up the new state on the next render.
+export async function setCoachEnabled(enabled: boolean): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  await supabase
+    .from("users")
+    .update({ coach_enabled: enabled })
+    .eq("id", user.id)
+    .throwOnError();
+
+  revalidatePath("/", "layout");
+}
 
 function buildPreRacePrompt(
   round: ActiveRound,
