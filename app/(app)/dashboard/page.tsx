@@ -20,15 +20,22 @@ export default async function DashboardPage() {
   const supabase = await createClient();
 
   const round = await getActiveRound(supabase);
-  const [saved, scored, coachEnabled] = await Promise.all([
+  const [saved, scored, coachEnabled, teamsEver] = await Promise.all([
     round ? getUserTeam(supabase, user.id, round.id) : Promise.resolve(null),
     supabase
       .from("user_scores")
       .select("round_id", { count: "exact", head: true })
       .eq("user_id", user.id),
     getCoachEnabled(supabase, user.id),
+    supabase
+      .from("user_teams")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id),
   ]);
   const scoredRounds = scored.count ?? 0;
+  // First-time = the player has never saved a team in any round. As soon as
+  // they save one, the welcome banner naturally disappears.
+  const isFirstTime = (teamsEver.count ?? 0) === 0;
   const locked = round?.lock_time
     ? new Date(round.lock_time) <= new Date()
     : false;
@@ -38,6 +45,8 @@ export default async function DashboardPage() {
       <PageHeader eyebrow="Dashboard" title="Welcome" />
 
       <div className="space-y-8 px-6 py-8 sm:px-12">
+        {isFirstTime ? <WelcomeBanner /> : null}
+
         {/* Next round */}
         {round ? (
           <section className="border border-border-default bg-surface p-6">
@@ -116,5 +125,24 @@ export default async function DashboardPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+// Soft, accent-bordered orientation panel shown only on the player's first
+// visit — disappears as soon as they save a team for any round.
+function WelcomeBanner() {
+  return (
+    <aside className="border border-accent/30 bg-accent/[0.03] p-5">
+      <p className="font-display text-xs tracking-[0.2em] text-accent uppercase">
+        Welcome to Academy Fantasy
+      </p>
+      <p className="mt-3 font-body text-sm leading-relaxed text-secondary">
+        Pick a team of 4 drivers under a £40M cap, boost one for 2× points, and
+        score across every race weekend. Mini-leagues let you compete with
+        friends — set one up from the <span className="text-primary">Leagues</span>{" "}
+        tab. The AI Coach (Gemini) is off by default; turn it on at the bottom
+        of this page if you want pre-race takes and recaps.
+      </p>
+    </aside>
   );
 }
