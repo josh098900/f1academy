@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
+import { InAppBrowserBanner } from "@/components/auth/InAppBrowserBanner";
 import { LockCountdown } from "@/components/team/LockCountdown";
 import { getActiveRound } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
@@ -54,6 +55,7 @@ export default async function Home() {
         )}
 
         <div className="mt-10 flex flex-col items-start gap-3">
+          <InAppBrowserBanner />
           <GoogleSignInButton />
           <Link
             href="/login"
