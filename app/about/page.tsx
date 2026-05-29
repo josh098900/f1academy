@@ -63,6 +63,13 @@ export default function AboutPage() {
         <p className="mt-10 font-display text-sm tracking-wider text-secondary uppercase">
           — Josh
         </p>
+
+        <Link
+          href="/recommends"
+          className="mt-12 inline-block font-mono text-xs tracking-wider text-secondary uppercase transition-colors hover:text-primary"
+        >
+          A few things I&apos;d recommend →
+        </Link>
       </div>
     </main>
   );
