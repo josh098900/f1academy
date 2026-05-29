@@ -3,6 +3,7 @@
 import { type EmailOtpType } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 
+import { safeNext } from "@/lib/auth/safe-next";
 import { createClient } from "@/lib/supabase/server";
 
 // Triggered by the user explicitly tapping the button on /auth/confirm — only
@@ -12,7 +13,7 @@ import { createClient } from "@/lib/supabase/server";
 export async function confirmSignIn(formData: FormData): Promise<void> {
   const token_hash = String(formData.get("token_hash") ?? "");
   const type = formData.get("type") as EmailOtpType | null;
-  const next = String(formData.get("next") ?? "/dashboard");
+  const next = safeNext(formData.get("next")?.toString());
 
   if (!token_hash || !type) {
     redirect("/login?error=link_invalid");
