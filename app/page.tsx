@@ -81,6 +81,12 @@ export default async function Home() {
           >
             Recommends →
           </Link>
+          <Link
+            href="/privacy"
+            className="transition-colors hover:text-primary"
+          >
+            Privacy →
+          </Link>
           <a
             href={`mailto:${CONTACT_EMAIL}?subject=Academy%20Fantasy%20feedback`}
             className="transition-colors hover:text-primary"
