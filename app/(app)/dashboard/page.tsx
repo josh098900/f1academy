@@ -10,6 +10,7 @@ import { CoachOptIn } from "@/components/coach/CoachOptIn";
 import { CoachToggle } from "@/components/coach/CoachToggle";
 import { LockCountdown } from "@/components/team/LockCountdown";
 import { getCurrentUser } from "@/lib/auth";
+import { CONTACT_EMAIL } from "@/lib/contact";
 import {
   getActiveRound,
   getCoachEnabled,
@@ -126,6 +127,15 @@ export default async function DashboardPage() {
           <DisplayNameEditor current={displayName} />
           <CoachToggle enabled={coachEnabled} />
           <RemindersToggle enabled={remindersEnabled} />
+          <p className="font-mono text-xs text-muted">
+            Found a bug or have feedback?{" "}
+            <a
+              href={`mailto:${CONTACT_EMAIL}?subject=Academy%20Fantasy%20feedback`}
+              className="text-secondary underline-offset-4 transition-colors hover:text-primary hover:underline"
+            >
+              {CONTACT_EMAIL}
+            </a>
+          </p>
           <form action={signOut} className="sm:hidden">
             <button
               type="submit"

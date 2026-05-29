@@ -3,6 +3,7 @@ import Link from "next/link";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { InAppBrowserBanner } from "@/components/auth/InAppBrowserBanner";
 import { LockCountdown } from "@/components/team/LockCountdown";
+import { CONTACT_EMAIL } from "@/lib/contact";
 import { getActiveRound } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
 
@@ -80,6 +81,12 @@ export default async function Home() {
           >
             Recommends →
           </Link>
+          <a
+            href={`mailto:${CONTACT_EMAIL}?subject=Academy%20Fantasy%20feedback`}
+            className="transition-colors hover:text-primary"
+          >
+            Feedback →
+          </a>
         </div>
         <p className="max-w-2xl font-body text-xs leading-relaxed text-muted">
           Free to play. For entertainment only. No money involved. Race data
