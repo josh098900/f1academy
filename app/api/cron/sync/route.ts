@@ -24,7 +24,8 @@ export async function GET(request: Request) {
     .from("seasons")
     .select("id, year")
     .eq("is_current", true)
-    .maybeSingle();
+    .maybeSingle()
+    .throwOnError();
   if (!season) {
     return NextResponse.json({ error: "No current season" }, { status: 500 });
   }
@@ -49,7 +50,10 @@ export async function GET(request: Request) {
   const idx = wikitext.indexOf("Drivers' championship");
   const section = idx === -1 ? wikitext : wikitext.slice(idx);
 
-  const { data: drivers } = await db.from("drivers").select("id, full_name");
+  const { data: drivers } = await db
+    .from("drivers")
+    .select("id, full_name")
+    .throwOnError();
   const idByName = new Map(
     (drivers ?? []).map((d) => [d.full_name.toLowerCase(), d.id])
   );
@@ -61,7 +65,8 @@ export async function GET(request: Request) {
     .from("rounds")
     .select("id, round_number")
     .eq("season_id", season.id)
-    .order("round_number");
+    .order("round_number")
+    .throwOnError();
 
   const synced: { round: number; applied: number; scored: number }[] = [];
   for (const round of rounds ?? []) {
@@ -71,7 +76,8 @@ export async function GET(request: Request) {
     const { data: sessions } = await db
       .from("sessions")
       .select("id, session_type")
-      .eq("round_id", round.id);
+      .eq("round_id", round.id)
+      .throwOnError();
     const threeRace = (sessions ?? []).some((s) => s.session_type === "race3");
     const qualiSession = (sessions ?? []).find(
       (s) => s.session_type === "qualifying"
@@ -82,7 +88,8 @@ export async function GET(request: Request) {
       const { data: qr } = await db
         .from("session_results")
         .select("driver_id, position")
-        .eq("session_id", qualiSession.id);
+        .eq("session_id", qualiSession.id)
+        .throwOnError();
       for (const r of qr ?? []) {
         if (r.position !== null) qualiMap.set(r.driver_id, r.position);
       }
@@ -94,7 +101,8 @@ export async function GET(request: Request) {
       const { count } = await db
         .from("session_results")
         .select("*", { count: "exact", head: true })
-        .eq("session_id", s.id);
+        .eq("session_id", s.id)
+        .throwOnError();
       if ((count ?? 0) > 0) continue; // don't overwrite existing results
 
       const grid = deriveGrid(qualiMap, s.session_type as RaceType, threeRace);
@@ -117,7 +125,8 @@ export async function GET(request: Request) {
       if (rows.length) {
         await db
           .from("session_results")
-          .upsert(rows, { onConflict: "session_id,driver_id" });
+          .upsert(rows, { onConflict: "session_id,driver_id" })
+          .throwOnError();
         applied += rows.length;
       }
     }

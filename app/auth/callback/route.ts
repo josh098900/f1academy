@@ -5,28 +5,24 @@ import { createClient } from "@/lib/supabase/server";
 
 // Magic-link / OAuth landing. Supabase redirects here with a `?code=` which we
 // exchange for a session cookie, then forward the user into the app.
+//
+// Redirects are built with `new URL(next, request.url)` — using the request's
+// own URL as the base so we never trust a raw x-forwarded-host header to form
+// the redirect target. In practice Vercel sets that header itself, but the
+// belt-and-braces is two lines and removes the header from the attack surface.
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
-  const next = safeNext(searchParams.get("next"));
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get("code");
+  const next = safeNext(requestUrl.searchParams.get("next"));
 
   if (code) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-
     if (!error) {
-      const forwardedHost = request.headers.get("x-forwarded-host");
-      const isLocalEnv = process.env.NODE_ENV === "development";
-      if (isLocalEnv) {
-        return NextResponse.redirect(`${origin}${next}`);
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`);
-      } else {
-        return NextResponse.redirect(`${origin}${next}`);
-      }
+      return NextResponse.redirect(new URL(next, request.url));
     }
   }
 
   // No code, or exchange failed.
-  return NextResponse.redirect(`${origin}/login?error=auth`);
+  return NextResponse.redirect(new URL("/login?error=auth", request.url));
 }
