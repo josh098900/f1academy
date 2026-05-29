@@ -626,6 +626,7 @@ export type Database = {
           favourite_team_id: number | null
           id: string
           is_admin: boolean
+          reminders_enabled: boolean
           updated_at: string
         }
         Insert: {
@@ -635,6 +636,7 @@ export type Database = {
           favourite_team_id?: number | null
           id: string
           is_admin?: boolean
+          reminders_enabled?: boolean
           updated_at?: string
         }
         Update: {
@@ -644,6 +646,7 @@ export type Database = {
           favourite_team_id?: number | null
           id?: string
           is_admin?: boolean
+          reminders_enabled?: boolean
           updated_at?: string
         }
         Relationships: [
@@ -652,6 +655,45 @@ export type Database = {
             columns: ["favourite_team_id"]
             isOneToOne: false
             referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reminder_log: {
+        Row: {
+          id: number
+          kind: string
+          round_id: number
+          sent_at: string
+          user_id: string
+        }
+        Insert: {
+          id?: number
+          kind: string
+          round_id: number
+          sent_at?: string
+          user_id: string
+        }
+        Update: {
+          id?: number
+          kind?: string
+          round_id?: number
+          sent_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reminder_log_round_id_fkey"
+            columns: ["round_id"]
+            isOneToOne: false
+            referencedRelation: "rounds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reminder_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]

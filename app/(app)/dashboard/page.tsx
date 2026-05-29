@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/PageHeader";
 import { DisplayNameEditor } from "@/components/account/DisplayNameEditor";
+import { RemindersToggle } from "@/components/account/RemindersToggle";
 import { CoachCard } from "@/components/coach/CoachCard";
 import { CoachOptIn } from "@/components/coach/CoachOptIn";
 import { CoachToggle } from "@/components/coach/CoachToggle";
@@ -13,6 +14,7 @@ import {
   getActiveRound,
   getCoachEnabled,
   getDisplayName,
+  getRemindersEnabled,
   getUserTeam,
 } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
@@ -26,19 +28,21 @@ export default async function DashboardPage() {
   const supabase = await createClient();
 
   const round = await getActiveRound(supabase);
-  const [saved, scored, coachEnabled, displayName, teamsEver] = await Promise.all([
-    round ? getUserTeam(supabase, user.id, round.id) : Promise.resolve(null),
-    supabase
-      .from("user_scores")
-      .select("round_id", { count: "exact", head: true })
-      .eq("user_id", user.id),
-    getCoachEnabled(supabase, user.id),
-    getDisplayName(supabase, user.id),
-    supabase
-      .from("user_teams")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id),
-  ]);
+  const [saved, scored, coachEnabled, displayName, remindersEnabled, teamsEver] =
+    await Promise.all([
+      round ? getUserTeam(supabase, user.id, round.id) : Promise.resolve(null),
+      supabase
+        .from("user_scores")
+        .select("round_id", { count: "exact", head: true })
+        .eq("user_id", user.id),
+      getCoachEnabled(supabase, user.id),
+      getDisplayName(supabase, user.id),
+      getRemindersEnabled(supabase, user.id),
+      supabase
+        .from("user_teams")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id),
+    ]);
   const scoredRounds = scored.count ?? 0;
   // First-time = the player has never saved a team in any round. As soon as
   // they save one, the welcome banner naturally disappears.
@@ -121,6 +125,7 @@ export default async function DashboardPage() {
           </p>
           <DisplayNameEditor current={displayName} />
           <CoachToggle enabled={coachEnabled} />
+          <RemindersToggle enabled={remindersEnabled} />
           <form action={signOut} className="sm:hidden">
             <button
               type="submit"
