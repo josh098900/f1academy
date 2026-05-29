@@ -13,7 +13,17 @@ const MAX_AHEAD_MS = 30 * 60 * 60 * 1000;
 const APP_URL =
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://f1academy-mu.vercel.app";
 
+// Internal — full detail goes to logs only (visible in Vercel Functions logs,
+// which themselves are auth-gated). User IDs are deliberately not echoed back
+// in the JSON response: the endpoint is CRON_SECRET-gated so a leak is
+// unlikely, but if the secret ever escaped we don't want the body to be a
+// ready-made user-ID dump.
 type ReminderError = { user: string; round: number; reason: string };
+type ReminderErrorPublic = { round: number; reason: string };
+const publicError = (e: ReminderError): ReminderErrorPublic => ({
+  round: e.round,
+  reason: e.reason,
+});
 
 // Scheduled lock-time email reminders. Gated by CRON_SECRET so only Vercel
 // (or you, via curl) can trigger it. Idempotent — the unique (user_id,
@@ -137,11 +147,16 @@ export async function GET(request: Request) {
     }
   }
 
+  if (errors.length > 0) {
+    // Full details (incl. user IDs) only in logs, not the response body.
+    console.warn("[cron/reminders] errors:", JSON.stringify(errors));
+  }
+
   return NextResponse.json({
     ok: true,
     rounds: rounds.length,
     sent,
     skipped,
-    errors,
+    errors: errors.map(publicError),
   });
 }
