@@ -80,6 +80,13 @@ export default function PrivacyPage() {
               first-party only, no third-party ad networks, no cross-site
               tracking.
             </p>
+            <p className="mt-3">
+              When something goes wrong, errors are reported to{" "}
+              <span className="text-primary">Sentry</span> so I can find and
+              fix bugs. The data captured is the stack trace, the URL where
+              the error happened, and basic browser/OS info — only when an
+              error fires, not on every page view.
+            </p>
           </section>
 
           <section>
