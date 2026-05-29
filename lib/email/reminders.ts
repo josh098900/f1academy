@@ -1,8 +1,14 @@
-import "server-only";
-
 // Lock-time reminder email — sent via Resend's REST API (no SDK dependency).
 // Uses the same verified domain as the auth emails (noreply@academy.jmathers.com)
 // but a different API key entry-point: RESEND_API_KEY lives on Vercel.
+//
+// This file is intentionally NOT guarded with `import "server-only"` because
+// scripts/test-reminder.ts imports it through bare Node (via tsx), which the
+// guard would treat as a Client Component and throw. The file is still
+// effectively server-only: it reads process.env.RESEND_API_KEY (stripped from
+// client bundles by Next since there's no NEXT_PUBLIC_ prefix), is only
+// referenced from a route handler + a CLI script, and isn't included in any
+// React component graph.
 
 const FROM = "Academy Fantasy <noreply@academy.jmathers.com>";
 const RESEND_URL = "https://api.resend.com/emails";
