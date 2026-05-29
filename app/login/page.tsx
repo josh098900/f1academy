@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
+import { InAppBrowserBanner } from "@/components/auth/InAppBrowserBanner";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 
@@ -95,11 +96,14 @@ function LoginInner() {
           </p>
         ) : (
           <>
+            <div className="mt-6">
+              <InAppBrowserBanner />
+            </div>
             <Button
               type="button"
               variant="secondary"
               onClick={handleGoogle}
-              className="mt-6 w-full"
+              className="mt-4 w-full"
             >
               Continue with Google
             </Button>
