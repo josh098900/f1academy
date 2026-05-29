@@ -34,7 +34,12 @@ export default async function LeaguePage({
       <PageHeader
         eyebrow={`League · ${league.memberCount} member${league.memberCount === 1 ? "" : "s"}`}
         title={league.name}
-        action={<LeaveButton leagueId={id} />}
+        action={
+          <LeaveButton
+            leagueId={id}
+            mode={league.ownerId === user.id ? "delete" : "leave"}
+          />
+        }
       >
         <div className="mt-3">
           <CopyCode code={league.inviteCode} />
