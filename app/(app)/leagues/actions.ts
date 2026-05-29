@@ -112,11 +112,48 @@ export async function leaveLeague(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "You're not signed in." };
 
+  // Block owners from silently leaving — the league would be left with a
+  // non-member owner and no admin handle. They use deleteLeague instead.
+  const { data: league } = await supabase
+    .from("leagues")
+    .select("owner_id")
+    .eq("id", leagueId)
+    .maybeSingle();
+  if (league?.owner_id === user.id) {
+    return {
+      ok: false,
+      error: "You own this league — delete it instead of leaving.",
+    };
+  }
+
   const { error } = await supabase
     .from("league_members")
     .delete()
     .eq("league_id", leagueId)
     .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/leagues");
+  return { ok: true };
+}
+
+// Owner-only. RLS's "owner deletes league" policy is the actual authority;
+// the ON DELETE CASCADE on league_members and (eventually) league_invites
+// means a single DELETE tears down the whole league cleanly.
+export async function deleteLeague(
+  leagueId: number
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "You're not signed in." };
+
+  const { error } = await supabase
+    .from("leagues")
+    .delete()
+    .eq("id", leagueId)
+    .eq("owner_id", user.id);
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/leagues");
