@@ -41,3 +41,20 @@ export async function setDisplayName(
   revalidatePath("/", "layout");
   return { ok: true };
 }
+
+// Lock-time email reminder opt-out toggle. RLS scopes the UPDATE to own-row.
+export async function setRemindersEnabled(enabled: boolean): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  await supabase
+    .from("users")
+    .update({ reminders_enabled: enabled })
+    .eq("id", user.id)
+    .throwOnError();
+
+  revalidatePath("/", "layout");
+}

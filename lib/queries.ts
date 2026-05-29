@@ -257,6 +257,21 @@ export async function getDisplayName(
   return data?.display_name ?? "";
 }
 
+// Lock-time email reminder opt-out. Defaults to true (most signups expect a
+// transactional nudge before locks); the toggle lives next to Coach.
+export async function getRemindersEnabled(
+  supabase: DB,
+  userId: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("users")
+    .select("reminders_enabled")
+    .eq("id", userId)
+    .maybeSingle()
+    .throwOnError();
+  return data?.reminders_enabled ?? true;
+}
+
 export async function getCurrentSeason(supabase: DB) {
   const { data } = await supabase
     .from("seasons")
