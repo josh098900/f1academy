@@ -3,12 +3,18 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/PageHeader";
+import { DisplayNameEditor } from "@/components/account/DisplayNameEditor";
 import { CoachCard } from "@/components/coach/CoachCard";
 import { CoachOptIn } from "@/components/coach/CoachOptIn";
 import { CoachToggle } from "@/components/coach/CoachToggle";
 import { LockCountdown } from "@/components/team/LockCountdown";
 import { getCurrentUser } from "@/lib/auth";
-import { getActiveRound, getCoachEnabled, getUserTeam } from "@/lib/queries";
+import {
+  getActiveRound,
+  getCoachEnabled,
+  getDisplayName,
+  getUserTeam,
+} from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
 
 import { getLatestRecap } from "../coach-actions";
@@ -20,13 +26,14 @@ export default async function DashboardPage() {
   const supabase = await createClient();
 
   const round = await getActiveRound(supabase);
-  const [saved, scored, coachEnabled, teamsEver] = await Promise.all([
+  const [saved, scored, coachEnabled, displayName, teamsEver] = await Promise.all([
     round ? getUserTeam(supabase, user.id, round.id) : Promise.resolve(null),
     supabase
       .from("user_scores")
       .select("round_id", { count: "exact", head: true })
       .eq("user_id", user.id),
     getCoachEnabled(supabase, user.id),
+    getDisplayName(supabase, user.id),
     supabase
       .from("user_teams")
       .select("id", { count: "exact", head: true })
@@ -45,7 +52,7 @@ export default async function DashboardPage() {
       <PageHeader eyebrow="Dashboard" title="Welcome" />
 
       <div className="space-y-8 px-6 py-8 sm:px-12">
-        {isFirstTime ? <WelcomeBanner /> : null}
+        {isFirstTime ? <WelcomeBanner displayName={displayName} /> : null}
 
         {/* Next round */}
         {round ? (
@@ -108,10 +115,11 @@ export default async function DashboardPage() {
         )}
 
         {/* Account + preferences. Sign-out is mobile-only (desktop top bar). */}
-        <section className="max-w-2xl space-y-5 border-t border-border-default pt-6">
+        <section className="max-w-2xl space-y-6 border-t border-border-default pt-6">
           <p className="font-mono text-xs text-muted">
             Signed in as <span className="text-secondary">{user.email}</span>
           </p>
+          <DisplayNameEditor current={displayName} />
           <CoachToggle enabled={coachEnabled} />
           <form action={signOut} className="sm:hidden">
             <button
@@ -130,11 +138,16 @@ export default async function DashboardPage() {
 
 // Soft, accent-bordered orientation panel shown only on the player's first
 // visit — disappears as soon as they save a team for any round.
-function WelcomeBanner() {
+function WelcomeBanner({ displayName }: { displayName: string }) {
   return (
     <aside className="border border-accent/30 bg-accent/[0.03] p-5">
       <p className="font-display text-xs tracking-[0.2em] text-accent uppercase">
         Welcome to Academy Fantasy
+      </p>
+      <p className="mt-3 font-body text-sm leading-relaxed text-secondary">
+        You&apos;ll appear on the leaderboard as{" "}
+        <span className="text-primary">{displayName}</span> — change it any time
+        from the account section below.
       </p>
       <p className="mt-3 font-body text-sm leading-relaxed text-secondary">
         Pick a team of 4 drivers under a £40M cap, boost one for 2× points, and
