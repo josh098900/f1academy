@@ -11,7 +11,11 @@ const IN_APP_PATTERNS: RegExp[] = [
   /FBAN|FBAV/i, // Facebook (Browser + App)
   /Instagram/i, // Instagram
   /Snap\b|Snapchat/i, // Snapchat
-  /TikTok|musical_ly/i, // TikTok
+  // TikTok: iOS UAs often don't include the literal "TikTok" string and
+  // instead identify ByteDance via internal codenames (trill_*), the locale
+  // header, or the bespoke webview marker. Without these, sharing a link in
+  // TikTok lands users on Google's 403 wall with no banner.
+  /TikTok|musical_ly|trill_|BytedanceWebview|ByteLocale/i,
   /Reddit\//i, // Reddit (app prefix)
   /LinkedInApp/i, // LinkedIn
   /Twitter|TwitterAndroid/i, // X / Twitter
