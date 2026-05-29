@@ -241,6 +241,22 @@ export async function getCoachEnabled(
   return data?.coach_enabled ?? false;
 }
 
+// The player's leaderboard name. Set on signup by handle_new_user (Google full
+// name, OR email local-part as fallback); editable from the Home account
+// section. Treated as required by the schema, so we always have a string.
+export async function getDisplayName(
+  supabase: DB,
+  userId: string
+): Promise<string> {
+  const { data } = await supabase
+    .from("users")
+    .select("display_name")
+    .eq("id", userId)
+    .maybeSingle()
+    .throwOnError();
+  return data?.display_name ?? "";
+}
+
 export async function getCurrentSeason(supabase: DB) {
   const { data } = await supabase
     .from("seasons")
