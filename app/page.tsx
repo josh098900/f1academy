@@ -65,6 +65,12 @@ export default async function Home() {
       </section>
 
       <footer className="border-t border-border-default px-6 py-6 sm:px-12">
+        <Link
+          href="/about"
+          className="mb-4 inline-block font-mono text-xs tracking-wider text-secondary uppercase transition-colors hover:text-primary"
+        >
+          About →
+        </Link>
         <p className="max-w-2xl font-body text-xs leading-relaxed text-muted">
           Free to play. For entertainment only. No money involved. Race data
           sourced from Wikipedia (CC BY-SA 4.0) and Wikidata (CC0). F1, FORMULA
