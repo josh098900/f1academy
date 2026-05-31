@@ -15,10 +15,12 @@ export default async function Home() {
   return (
     <main className="flex min-h-dvh flex-col">
       {/* First screen: full viewport height on mobile so the hero + sign-in CTA
-          own the fold and the footer/legal scroll in below. On sm+ this reverts
-          to flex-1 growth, keeping the original desktop layout (footer pinned to
-          the bottom of the screen, all visible). */}
-      <div className="flex min-h-dvh flex-col sm:min-h-0 sm:flex-1">
+          own the fold and the footer/legal scroll in below. Uses svh (small
+          viewport height) — a STABLE value — rather than dvh, so the block
+          doesn't resize when the mobile address bar collapses on scroll. On sm+
+          this reverts to flex-1 growth, keeping the original desktop layout
+          (footer pinned to the bottom of the screen, all visible). */}
+      <div className="flex min-h-svh flex-col sm:min-h-0 sm:flex-1">
         <header className="flex items-center justify-end px-6 py-5 sm:px-12">
           <Link
             href="/login"
