@@ -10,6 +10,11 @@ Sentry.init({
   // Full tracing in dev, sampled in prod to stay within the cost budget.
   tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
 
+  // Benign Supabase auth noise: a returning user with an expired/cleared
+  // refresh token cookie is correctly treated as logged-out — not an error
+  // worth tracking. Dropped so it doesn't bury real issues.
+  ignoreErrors: [/Invalid Refresh Token/i, /Auth session missing/i],
+
   // No PII to Sentry — see docs/files/LEGAL_AND_ETHICS.md.
   sendDefaultPii: false,
 });
