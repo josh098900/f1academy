@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { SilverstoneCircuit } from "@/components/SilverstoneCircuit";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { InAppBrowserBanner } from "@/components/auth/InAppBrowserBanner";
 import { LockCountdown } from "@/components/team/LockCountdown";
@@ -31,46 +32,62 @@ export default async function Home() {
         </header>
 
         <section className="flex flex-1 flex-col justify-center px-6 sm:px-12">
-          <p className="font-body text-xs tracking-[0.2em] text-secondary uppercase">
-            Fantasy League · F1 Academy · 2026 Season
-          </p>
-          <h1 className="mt-4 font-display text-[clamp(4rem,12vw,8rem)] leading-[0.85] tracking-wide uppercase">
-            Academy
-            <br />
-            <span className="text-accent">Fantasy</span>
-          </h1>
-          <p className="mt-6 max-w-md font-body text-base leading-relaxed text-secondary">
-            Pick four drivers. Boost your star. Score across every weekend.
-            Climb leagues with friends.
-          </p>
-
-          {round ? (
-            <div className="mt-8 space-y-2">
-              <p className="font-mono text-xs tracking-wider text-muted uppercase">
-                Next round · R{round.round_number} ·{" "}
-                <span className="text-secondary">{round.circuit_name}</span>
+          {/* Two columns on lg+: hero copy left, Silverstone circuit art fills
+              the right (otherwise-empty) half. Single column below lg. */}
+          <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+            <div>
+              <p className="font-body text-xs tracking-[0.2em] text-secondary uppercase">
+                Fantasy League · F1 Academy · 2026 Season
               </p>
-              {round.lock_time ? (
-                <LockCountdown lockTime={round.lock_time} />
-              ) : (
-                <p className="font-mono text-2xl text-muted tabular-nums">Locks TBC</p>
-              )}
-            </div>
-          ) : (
-            <p className="mt-8 font-mono text-xs tracking-wider text-muted uppercase">
-              Season complete
-            </p>
-          )}
+              <h1 className="mt-4 font-display text-[clamp(4rem,12vw,8rem)] leading-[0.85] tracking-wide uppercase">
+                Academy
+                <br />
+                <span className="text-accent">Fantasy</span>
+              </h1>
+              <p className="mt-6 max-w-md font-body text-base leading-relaxed text-secondary">
+                Pick four drivers. Boost your star. Score across every weekend.
+                Climb leagues with friends.
+              </p>
 
-          <div className="mt-10 flex flex-col items-start gap-3">
-            <InAppBrowserBanner />
-            <GoogleSignInButton />
-            <Link
-              href="/login"
-              className="font-body text-sm text-secondary underline-offset-4 transition-colors hover:text-primary hover:underline"
-            >
-              Use email instead →
-            </Link>
+              {round ? (
+                <div className="mt-8 space-y-2">
+                  <p className="font-mono text-xs tracking-wider text-muted uppercase">
+                    Next round · R{round.round_number} ·{" "}
+                    <span className="text-secondary">{round.circuit_name}</span>
+                  </p>
+                  {round.lock_time ? (
+                    <LockCountdown lockTime={round.lock_time} />
+                  ) : (
+                    <p className="font-mono text-2xl text-muted tabular-nums">
+                      Locks TBC
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-8 font-mono text-xs tracking-wider text-muted uppercase">
+                  Season complete
+                </p>
+              )}
+
+              <div className="mt-10 flex flex-col items-start gap-3">
+                <InAppBrowserBanner />
+                <GoogleSignInButton />
+                <Link
+                  href="/login"
+                  className="font-body text-sm text-secondary underline-offset-4 transition-colors hover:text-primary hover:underline"
+                >
+                  Use email instead →
+                </Link>
+              </div>
+            </div>
+
+            {/* Right column — decorative circuit, lg+ only */}
+            <div className="hidden flex-col items-center gap-5 lg:flex">
+              <SilverstoneCircuit className="w-full max-w-xl text-accent" />
+              <p className="font-mono text-xs tracking-[0.2em] text-muted uppercase">
+                Silverstone · 18 corners · 5.891 km
+              </p>
+            </div>
           </div>
         </section>
       </div>
