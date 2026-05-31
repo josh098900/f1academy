@@ -14,58 +14,64 @@ export default async function Home() {
 
   return (
     <main className="flex min-h-dvh flex-col">
-      <header className="flex items-center justify-end px-6 py-5 sm:px-12">
-        <Link
-          href="/login"
-          className="font-display text-sm tracking-wider text-secondary uppercase transition-colors hover:text-primary"
-        >
-          Sign in
-        </Link>
-      </header>
-
-      <section className="flex flex-1 flex-col justify-center px-6 sm:px-12">
-        <p className="font-body text-xs tracking-[0.2em] text-secondary uppercase">
-          Fantasy League · F1 Academy · 2026 Season
-        </p>
-        <h1 className="mt-4 font-display text-[clamp(4rem,12vw,8rem)] leading-[0.85] tracking-wide uppercase">
-          Academy
-          <br />
-          <span className="text-accent">Fantasy</span>
-        </h1>
-        <p className="mt-6 max-w-md font-body text-base leading-relaxed text-secondary">
-          Pick four drivers. Boost your star. Score across every weekend.
-          Climb leagues with friends.
-        </p>
-
-        {round ? (
-          <div className="mt-8 space-y-2">
-            <p className="font-mono text-xs tracking-wider text-muted uppercase">
-              Next round · R{round.round_number} ·{" "}
-              <span className="text-secondary">{round.circuit_name}</span>
-            </p>
-            {round.lock_time ? (
-              <LockCountdown lockTime={round.lock_time} />
-            ) : (
-              <p className="font-mono text-2xl text-muted tabular-nums">Locks TBC</p>
-            )}
-          </div>
-        ) : (
-          <p className="mt-8 font-mono text-xs tracking-wider text-muted uppercase">
-            Season complete
-          </p>
-        )}
-
-        <div className="mt-10 flex flex-col items-start gap-3">
-          <InAppBrowserBanner />
-          <GoogleSignInButton />
+      {/* First screen: full viewport height on mobile so the hero + sign-in CTA
+          own the fold and the footer/legal scroll in below. On sm+ this reverts
+          to flex-1 growth, keeping the original desktop layout (footer pinned to
+          the bottom of the screen, all visible). */}
+      <div className="flex min-h-dvh flex-col sm:min-h-0 sm:flex-1">
+        <header className="flex items-center justify-end px-6 py-5 sm:px-12">
           <Link
             href="/login"
-            className="font-body text-sm text-secondary underline-offset-4 transition-colors hover:text-primary hover:underline"
+            className="font-display text-sm tracking-wider text-secondary uppercase transition-colors hover:text-primary"
           >
-            Use email instead →
+            Sign in
           </Link>
-        </div>
-      </section>
+        </header>
+
+        <section className="flex flex-1 flex-col justify-center px-6 sm:px-12">
+          <p className="font-body text-xs tracking-[0.2em] text-secondary uppercase">
+            Fantasy League · F1 Academy · 2026 Season
+          </p>
+          <h1 className="mt-4 font-display text-[clamp(4rem,12vw,8rem)] leading-[0.85] tracking-wide uppercase">
+            Academy
+            <br />
+            <span className="text-accent">Fantasy</span>
+          </h1>
+          <p className="mt-6 max-w-md font-body text-base leading-relaxed text-secondary">
+            Pick four drivers. Boost your star. Score across every weekend.
+            Climb leagues with friends.
+          </p>
+
+          {round ? (
+            <div className="mt-8 space-y-2">
+              <p className="font-mono text-xs tracking-wider text-muted uppercase">
+                Next round · R{round.round_number} ·{" "}
+                <span className="text-secondary">{round.circuit_name}</span>
+              </p>
+              {round.lock_time ? (
+                <LockCountdown lockTime={round.lock_time} />
+              ) : (
+                <p className="font-mono text-2xl text-muted tabular-nums">Locks TBC</p>
+              )}
+            </div>
+          ) : (
+            <p className="mt-8 font-mono text-xs tracking-wider text-muted uppercase">
+              Season complete
+            </p>
+          )}
+
+          <div className="mt-10 flex flex-col items-start gap-3">
+            <InAppBrowserBanner />
+            <GoogleSignInButton />
+            <Link
+              href="/login"
+              className="font-body text-sm text-secondary underline-offset-4 transition-colors hover:text-primary hover:underline"
+            >
+              Use email instead →
+            </Link>
+          </div>
+        </section>
+      </div>
 
       <footer className="border-t border-border-default px-6 py-6 sm:px-12">
         <div className="mb-4 flex flex-wrap gap-x-6 gap-y-2 font-mono text-xs tracking-wider text-secondary uppercase">
