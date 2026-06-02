@@ -1,3 +1,4 @@
+import { Coffee } from "lucide-react";
 import Link from "next/link";
 
 import type { Metadata } from "next";
@@ -63,6 +64,25 @@ export default function AboutPage() {
         <p className="mt-10 font-display text-sm tracking-wider text-secondary uppercase">
           — Josh
         </p>
+
+        <aside className="mt-12 border border-border-default p-5">
+          <p className="font-body text-sm leading-relaxed text-secondary">
+            The game is free and always will be — no charge to play, nothing
+            locked behind money. But if you&apos;ve enjoyed it and fancy
+            chipping in toward the running costs (or just a coffee for a
+            student dev), there&apos;s a tip jar. Completely optional, and it
+            changes nothing about the game.
+          </p>
+          <a
+            href="https://buymeacoffee.com/josh098900"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-flex items-center gap-2 rounded-sm border border-border-strong px-4 py-2 font-display text-sm tracking-wider text-primary uppercase transition-colors hover:border-accent hover:bg-accent hover:text-inverse focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <Coffee className="size-4" />
+            Buy me a coffee
+          </a>
+        </aside>
 
         <Link
           href="/recommends"
