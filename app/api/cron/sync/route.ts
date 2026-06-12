@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { isAuthorizedCron } from "@/lib/cron-auth";
 import { runScoreRound } from "@/lib/scoring/run";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { deriveGrid, type RaceType } from "@/lib/wiki/grid";
@@ -14,8 +15,7 @@ const WIKI_API = "https://en.wikipedia.org/w/api.php";
 // derive grids from saved qualifying, and re-score. Gated by CRON_SECRET so
 // only the scheduler can trigger it.
 export async function GET(request: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
