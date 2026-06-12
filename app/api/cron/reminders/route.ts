@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { isAuthorizedCron } from "@/lib/cron-auth";
 import { sendLockReminder } from "@/lib/email/reminders";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -29,8 +30,7 @@ const publicError = (e: ReminderError): ReminderErrorPublic => ({
 // (or you, via curl) can trigger it. Idempotent — the unique (user_id,
 // round_id, kind) constraint on reminder_log means a re-run sends nothing.
 export async function GET(request: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
