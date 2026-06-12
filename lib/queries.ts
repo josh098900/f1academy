@@ -272,6 +272,36 @@ export async function getRemindersEnabled(
   return data?.reminders_enabled ?? true;
 }
 
+export type Announcement = {
+  id: number;
+  title: string | null;
+  body: string;
+  pinned: boolean;
+  createdAt: string;
+};
+
+// Admin-authored news, pinned first then newest. `limit` caps the dashboard
+// card; omit for the full /news page.
+export async function getAnnouncements(
+  supabase: DB,
+  limit?: number
+): Promise<Announcement[]> {
+  let query = supabase
+    .from("announcements")
+    .select("id, title, body, pinned, created_at")
+    .order("pinned", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (limit) query = query.limit(limit);
+  const { data } = await query.throwOnError();
+  return (data ?? []).map((a) => ({
+    id: a.id,
+    title: a.title,
+    body: a.body,
+    pinned: a.pinned,
+    createdAt: a.created_at,
+  }));
+}
+
 export async function getCurrentSeason(supabase: DB) {
   const { data } = await supabase
     .from("seasons")

@@ -34,6 +34,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      announcements: {
+        Row: {
+          body: string
+          created_at: string
+          id: number
+          pinned: boolean
+          title: string | null
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: number
+          pinned?: boolean
+          title?: string | null
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: number
+          pinned?: boolean
+          title?: string | null
+        }
+        Relationships: []
+      }
       coach_insights: {
         Row: {
           content: string

@@ -8,11 +8,13 @@ import { RemindersToggle } from "@/components/account/RemindersToggle";
 import { CoachCard } from "@/components/coach/CoachCard";
 import { CoachOptIn } from "@/components/coach/CoachOptIn";
 import { CoachToggle } from "@/components/coach/CoachToggle";
+import { AnnouncementItem } from "@/components/news/AnnouncementItem";
 import { LockCountdown } from "@/components/team/LockCountdown";
 import { getCurrentUser } from "@/lib/auth";
 import { CONTACT_EMAIL } from "@/lib/contact";
 import {
   getActiveRound,
+  getAnnouncements,
   getCoachEnabled,
   getDisplayName,
   getRemindersEnabled,
@@ -29,21 +31,29 @@ export default async function DashboardPage() {
   const supabase = await createClient();
 
   const round = await getActiveRound(supabase);
-  const [saved, scored, coachEnabled, displayName, remindersEnabled, teamsEver] =
-    await Promise.all([
-      round ? getUserTeam(supabase, user.id, round.id) : Promise.resolve(null),
-      supabase
-        .from("user_scores")
-        .select("round_id", { count: "exact", head: true })
-        .eq("user_id", user.id),
-      getCoachEnabled(supabase, user.id),
-      getDisplayName(supabase, user.id),
-      getRemindersEnabled(supabase, user.id),
-      supabase
-        .from("user_teams")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", user.id),
-    ]);
+  const [
+    saved,
+    scored,
+    coachEnabled,
+    displayName,
+    remindersEnabled,
+    teamsEver,
+    announcements,
+  ] = await Promise.all([
+    round ? getUserTeam(supabase, user.id, round.id) : Promise.resolve(null),
+    supabase
+      .from("user_scores")
+      .select("round_id", { count: "exact", head: true })
+      .eq("user_id", user.id),
+    getCoachEnabled(supabase, user.id),
+    getDisplayName(supabase, user.id),
+    getRemindersEnabled(supabase, user.id),
+    supabase
+      .from("user_teams")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id),
+    getAnnouncements(supabase, 3),
+  ]);
   const scoredRounds = scored.count ?? 0;
   // First-time = the player has never saved a team in any round. As soon as
   // they save one, the welcome banner naturally disappears.
@@ -100,6 +110,28 @@ export default async function DashboardPage() {
             </p>
           </section>
         )}
+
+        {/* Latest updates — only renders when there's news to show. */}
+        {announcements.length > 0 ? (
+          <section className="max-w-2xl space-y-4 border border-accent/30 bg-accent/[0.03] p-6">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-xs tracking-[0.2em] text-accent uppercase">
+                Latest updates
+              </h2>
+              <Link
+                href="/news"
+                className="font-mono text-[10px] tracking-wider text-secondary uppercase transition-colors hover:text-primary"
+              >
+                All updates →
+              </Link>
+            </div>
+            <div className="space-y-5">
+              {announcements.map((a) => (
+                <AnnouncementItem key={a.id} item={a} />
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {/* Post-race recap — only once the player has a scored round. */}
         {scoredRounds ? (
