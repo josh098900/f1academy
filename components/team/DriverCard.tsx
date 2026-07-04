@@ -1,3 +1,5 @@
+"use client";
+
 import { teamColor } from "@/lib/f1-teams";
 import type { LineupDriver } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -5,6 +7,13 @@ import { cn } from "@/lib/utils";
 // The most important component in the app — see DESIGN_SYSTEM.md.
 // Number-led, 4px team-colour left bar, hard edges. Optional selection state
 // (used by the TeamPicker): selected → accent border, with a 2× boost toggle.
+//
+// "use client" is REQUIRED even though TeamPicker (already client) is the main
+// consumer: LockedTeam on the server-rendered team page also renders this
+// directly, and a server component can't emit the inline onKeyDown handler —
+// it throws "Event handlers cannot be passed to Client Component props" at
+// request time (the locked view's Yellow Flag on R3 lock day). Build can't
+// catch it: dynamic pages aren't rendered at build time.
 type Props = {
   driver: LineupDriver;
   selected?: boolean;
