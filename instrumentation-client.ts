@@ -14,6 +14,18 @@ Sentry.init({
   // worth tracking. Dropped so it doesn't bury real issues.
   ignoreErrors: [/Invalid Refresh Token/i, /Auth session missing/i],
 
+  // Drop errors thrown by code we didn't ship: browser-extension content
+  // scripts and the JS that social in-app browsers (X, Instagram, Snapchat…)
+  // inject into every page. Our own bundle serves from /_next/static, so
+  // this can't mask a real app error. First seen live: X's WebView script
+  // crashing with "Can't find variable: CONFIG" from app:///.
+  denyUrls: [
+    /^app:\/\//,
+    /^chrome-extension:\/\//,
+    /^moz-extension:\/\//,
+    /^safari(-web)?-extension:\/\//,
+  ],
+
   // No PII to Sentry — see docs/files/LEGAL_AND_ETHICS.md. No Session Replay,
   // no Logs product in v1 (quota + privacy). Revisit if we need them.
   sendDefaultPii: false,
