@@ -523,6 +523,9 @@ export async function getDriverProfile(
   const history: DriverRoundResult[] = [];
   let seasonPoints = 0;
 
+  // Three queries regardless of round count (was 2 sequential queries per
+  // completed round) — same batching applied to lib/coach/standings after the
+  // external performance review; this loop had kept the old N+1 shape.
   if (season) {
     const { data: rounds } = await supabase
       .from("rounds")
@@ -532,57 +535,68 @@ export async function getDriverProfile(
       .order("round_number", { ascending: true })
       .throwOnError();
 
-    for (const round of rounds) {
+    if (rounds.length > 0) {
       const { data: sessions } = await supabase
         .from("sessions")
-        .select("id, session_type")
-        .eq("round_id", round.id)
+        .select("id, round_id, session_type")
+        .in("round_id", rounds.map((r) => r.id))
         .throwOnError();
-      if (sessions.length === 0) continue;
-      const typeOf = new Map(sessions.map((s) => [s.id, s.session_type]));
+      const sessionMeta = new Map(
+        sessions.map((s) => [s.id, { roundId: s.round_id, type: s.session_type }])
+      );
 
-      const { data: results } = await supabase
-        .from("session_results")
-        .select("session_id, position, grid_position, status, fastest_lap")
-        .eq("driver_id", driverId)
-        .in(
-          "session_id",
-          sessions.map((s) => s.id)
-        )
-        .throwOnError();
-      if (results.length === 0) continue;
+      const { data: results } = sessions.length
+        ? await supabase
+            .from("session_results")
+            .select("session_id, position, grid_position, status, fastest_lap")
+            .eq("driver_id", driverId)
+            .in("session_id", sessions.map((s) => s.id))
+            .throwOnError()
+        : { data: [] };
 
-      const driverSessions: DriverSession[] = [];
-      const summary: DriverRoundResult["sessions"] = [];
+      const byRound = new Map<number, typeof results>();
       for (const r of results) {
-        const type = typeOf.get(r.session_id);
-        if (!type) continue;
-        driverSessions.push({
-          type: type as DriverSession["type"],
-          position: r.position,
-          gridPosition: r.grid_position,
-          status: r.status as DriverSession["status"],
-          fastestLap: r.fastest_lap,
-        });
-        summary.push({
-          type: type as SessionType,
-          position: r.position,
-          fastestLap: r.fastest_lap,
-        });
+        const roundId = sessionMeta.get(r.session_id)?.roundId;
+        if (roundId === undefined) continue;
+        const arr = byRound.get(roundId) ?? [];
+        arr.push(r);
+        byRound.set(roundId, arr);
       }
 
-      const points = scoreDriverWeekend({ sessions: driverSessions }).base;
-      seasonPoints += points;
       const order = ["qualifying", "race1", "race2", "race3"];
-      summary.sort(
-        (a, b) => order.indexOf(a.type) - order.indexOf(b.type)
-      );
-      history.push({
-        roundNumber: round.round_number,
-        circuitName: round.circuit_name ?? `Round ${round.round_number}`,
-        points,
-        sessions: summary,
-      });
+      for (const round of rounds) {
+        const roundResults = byRound.get(round.id) ?? [];
+        if (roundResults.length === 0) continue;
+
+        const driverSessions: DriverSession[] = [];
+        const summary: DriverRoundResult["sessions"] = [];
+        for (const r of roundResults) {
+          const type = sessionMeta.get(r.session_id)?.type;
+          if (!type) continue;
+          driverSessions.push({
+            type: type as DriverSession["type"],
+            position: r.position,
+            gridPosition: r.grid_position,
+            status: r.status as DriverSession["status"],
+            fastestLap: r.fastest_lap,
+          });
+          summary.push({
+            type: type as SessionType,
+            position: r.position,
+            fastestLap: r.fastest_lap,
+          });
+        }
+
+        const points = scoreDriverWeekend({ sessions: driverSessions }).base;
+        seasonPoints += points;
+        summary.sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
+        history.push({
+          roundNumber: round.round_number,
+          circuitName: round.circuit_name ?? `Round ${round.round_number}`,
+          points,
+          sessions: summary,
+        });
+      }
     }
   }
 
