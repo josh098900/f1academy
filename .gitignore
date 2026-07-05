@@ -43,3 +43,8 @@ next-env.d.ts
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# local-only ops tooling (not part of the app)
+scripts/launch-stats.ts
+scripts/battig-email.ts
+scripts/race-wrap-email.ts

@@ -4,10 +4,9 @@ import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/PageHeader";
 import { DisplayNameEditor } from "@/components/account/DisplayNameEditor";
-import { RemindersToggle } from "@/components/account/RemindersToggle";
+import { PreferenceToggle } from "@/components/account/PreferenceToggle";
 import { CoachCard } from "@/components/coach/CoachCard";
 import { CoachOptIn } from "@/components/coach/CoachOptIn";
-import { CoachToggle } from "@/components/coach/CoachToggle";
 import { AnnouncementItem } from "@/components/news/AnnouncementItem";
 import { LockCountdown } from "@/components/team/LockCountdown";
 import { getCurrentUser } from "@/lib/auth";
@@ -22,8 +21,8 @@ import {
 } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
 
-import { getLatestRecap } from "../coach-actions";
-import { signOut } from "./actions";
+import { getLatestRecap, setCoachEnabled } from "../coach-actions";
+import { setRemindersEnabled, signOut } from "./actions";
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
@@ -157,8 +156,20 @@ export default async function DashboardPage() {
             Signed in as <span className="text-secondary">{user.email}</span>
           </p>
           <DisplayNameEditor current={displayName} />
-          <CoachToggle enabled={coachEnabled} />
-          <RemindersToggle enabled={remindersEnabled} />
+          <PreferenceToggle
+            label="Coach (AI insights)"
+            description="Pre-race reads, post-race recaps and driver takes — Gemini, grounded in the round and form data only."
+            enabled={coachEnabled}
+            ariaLabel="Toggle Coach"
+            action={setCoachEnabled}
+          />
+          <PreferenceToggle
+            label="Lock-time email reminders"
+            description="A short nudge ~24 hours before each round locks, if you haven't picked yet. Sent from noreply@academy.jmathers.com."
+            enabled={remindersEnabled}
+            ariaLabel="Toggle lock-time reminders"
+            action={setRemindersEnabled}
+          />
           <p className="font-mono text-xs text-muted">
             Found a bug or have feedback?{" "}
             <a

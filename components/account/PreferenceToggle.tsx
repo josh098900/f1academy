@@ -2,13 +2,26 @@
 
 import { useOptimistic, useTransition } from "react";
 
-import { setRemindersEnabled } from "@/app/(app)/dashboard/actions";
 import { cn } from "@/lib/utils";
 
-// Lock-time reminder opt-out. Default-on (most signups expect a transactional
-// nudge); the toggle here lets players silence it. Same optimistic switch
-// pattern as CoachToggle.
-export function RemindersToggle({ enabled }: { enabled: boolean }) {
+// One optimistic switch for every boolean account preference (Coach,
+// reminders, whatever comes next). The action is a server action that
+// persists the flag under RLS and revalidates the layout — useOptimistic
+// flips the UI immediately and snaps back to server truth if the write
+// is rejected. Replaces the near-identical CoachToggle/RemindersToggle pair.
+export function PreferenceToggle({
+  label,
+  description,
+  enabled,
+  ariaLabel,
+  action,
+}: {
+  label: string;
+  description: string;
+  enabled: boolean;
+  ariaLabel: string;
+  action: (enabled: boolean) => Promise<void>;
+}) {
   const [optimistic, setOptimistic] = useOptimistic(enabled);
   const [pending, start] = useTransition();
 
@@ -16,7 +29,7 @@ export function RemindersToggle({ enabled }: { enabled: boolean }) {
     const next = !optimistic;
     start(async () => {
       setOptimistic(next);
-      await setRemindersEnabled(next);
+      await action(next);
     });
   }
 
@@ -24,18 +37,17 @@ export function RemindersToggle({ enabled }: { enabled: boolean }) {
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0">
         <p className="font-display text-sm tracking-wider text-primary uppercase">
-          Lock-time email reminders
+          {label}
         </p>
         <p className="mt-1 font-body text-xs leading-relaxed text-muted">
-          A short nudge ~24 hours before each round locks, if you haven&apos;t
-          picked yet. Sent from noreply@academy.jmathers.com.
+          {description}
         </p>
       </div>
       <button
         type="button"
         role="switch"
         aria-checked={optimistic}
-        aria-label="Toggle lock-time reminders"
+        aria-label={ariaLabel}
         onClick={flip}
         disabled={pending}
         className={cn(
