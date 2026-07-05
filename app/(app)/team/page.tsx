@@ -46,9 +46,19 @@ export default async function TeamPage() {
     getCoachEnabled(supabase, user.id),
   ]);
 
-  // Prefill: this round's saved team, otherwise carry over the previous round's.
-  const initialSelected = saved?.driverIds ?? transfers.baseline ?? undefined;
-  const initialBoost = saved?.boostDriverId ?? transfers.baselineBoost ?? null;
+  // Prefill: this round's saved team, otherwise carry over the previous
+  // round's. Sanitise against THIS round's lineup — a carried-over squad can
+  // contain a driver who isn't racing this round (e.g. a departed wildcard),
+  // and an id with no card to tap becomes a ghost pick: counted in "n/4",
+  // impossible to deselect, and blocking a valid save.
+  const lineupIds = new Set(lineup.map((d) => d.driverId));
+  const prefill = (saved?.driverIds ?? transfers.baseline ?? []).filter((id) =>
+    lineupIds.has(id)
+  );
+  const initialSelected = prefill.length > 0 ? prefill : undefined;
+  const prefillBoost = saved?.boostDriverId ?? transfers.baselineBoost ?? null;
+  const initialBoost =
+    prefillBoost !== null && lineupIds.has(prefillBoost) ? prefillBoost : null;
 
   const locked = round.lock_time
     ? new Date(round.lock_time) <= new Date()
