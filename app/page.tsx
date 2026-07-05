@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { SilverstoneCircuit } from "@/components/SilverstoneCircuit";
+import { CIRCUIT_ART } from "@/components/circuits";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { InAppBrowserBanner } from "@/components/auth/InAppBrowserBanner";
 import { LockCountdown } from "@/components/team/LockCountdown";
@@ -12,6 +12,9 @@ export default async function Home() {
   // rounds RLS is public-readable so this works for unauthenticated visitors.
   const supabase = await createClient();
   const round = await getActiveRound(supabase);
+  const circuitArt = round?.circuit_name
+    ? CIRCUIT_ART[round.circuit_name]
+    : undefined;
 
   return (
     <main className="flex min-h-dvh flex-col">
@@ -81,13 +84,17 @@ export default async function Home() {
               </div>
             </div>
 
-            {/* Right column — decorative circuit, lg+ only */}
-            <div className="hidden flex-col items-center gap-5 lg:flex">
-              <SilverstoneCircuit className="w-full max-w-xl text-accent" />
-              <p className="font-mono text-xs tracking-[0.2em] text-muted uppercase">
-                Silverstone · 18 corners · 5.891 km
-              </p>
-            </div>
+            {/* Right column — decorative circuit art for the active round,
+                lg+ only. Rounds without art in the registry render nothing
+                and the hero stays single-column. */}
+            {circuitArt ? (
+              <div className="hidden flex-col items-center gap-5 lg:flex">
+                <circuitArt.Art className="w-full max-w-xl text-accent" />
+                <p className="font-mono text-xs tracking-[0.2em] text-muted uppercase">
+                  {circuitArt.caption}
+                </p>
+              </div>
+            ) : null}
           </div>
         </section>
       </div>
@@ -121,10 +128,12 @@ export default async function Home() {
         </div>
         <p className="max-w-2xl font-body text-xs leading-relaxed text-muted">
           Free to play. For entertainment only. No money involved. Race data
-          sourced from Wikipedia (CC BY-SA 4.0) and Wikidata (CC0). F1, FORMULA
-          1, F1 ACADEMY, GRAND PRIX and related marks are trademarks of Formula
-          One Licensing BV. Academy Fantasy is unofficial and not associated
-          with the Formula 1 group of companies.
+          sourced from Wikipedia (CC BY-SA 4.0) and Wikidata (CC0). Circuit
+          outlines from Wikimedia Commons — Silverstone (CC0); Zandvoort by
+          ごひょううべこ (CC BY-SA 4.0). F1, FORMULA 1, F1 ACADEMY, GRAND PRIX
+          and related marks are trademarks of Formula One Licensing BV. Academy
+          Fantasy is unofficial and not associated with the Formula 1 group of
+          companies.
         </p>
       </footer>
     </main>
