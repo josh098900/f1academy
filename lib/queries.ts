@@ -4,6 +4,7 @@ import type { Database } from "@/db/types";
 import {
   type DriverSession,
   type SessionType,
+  lastRacePodium,
   scoreDriverWeekend,
 } from "@/lib/scoring";
 
@@ -503,12 +504,15 @@ export async function getSeasonForm(
     .in("session_id", sessions.map((s) => s.id))
     .throwOnError();
 
-  const byRoundDriver = new Map<string, DriverSession[]>();
+  // Group sessions per round index (ascending), so each round can look up the
+  // previous round's sessions for the cross-round podium-streak bridge.
+  const perRound: Map<number, DriverSession[]>[] = rounds.map(() => new Map());
   for (const r of results) {
     const meta = sessionMeta.get(r.session_id);
     if (!meta) continue;
-    const key = `${meta.roundId}:${r.driver_id}`;
-    const arr = byRoundDriver.get(key) ?? [];
+    const idx = roundIndex.get(meta.roundId);
+    if (idx === undefined) continue;
+    const arr = perRound[idx].get(r.driver_id) ?? [];
     arr.push({
       type: meta.type as DriverSession["type"],
       position: r.position,
@@ -516,19 +520,24 @@ export async function getSeasonForm(
       status: r.status as DriverSession["status"],
       fastestLap: r.fastest_lap,
     });
-    byRoundDriver.set(key, arr);
+    perRound[idx].set(r.driver_id, arr);
   }
 
-  for (const [key, sess] of byRoundDriver) {
-    const [roundId, driverId] = key.split(":").map(Number);
-    const idx = roundIndex.get(roundId);
-    if (idx === undefined) continue;
-    const points = scoreDriverWeekend({ sessions: sess }).base;
-    const arr =
-      form.byDriver[driverId] ??
-      (form.byDriver[driverId] = Array(rounds.length).fill(null));
-    arr[idx] = points;
-    if (points > form.max) form.max = points;
+  for (let idx = 0; idx < perRound.length; idx++) {
+    for (const [driverId, sess] of perRound[idx]) {
+      const points = scoreDriverWeekend({
+        sessions: sess,
+        // Bridge from the previous round's final race, exactly as the real
+        // scorer does — otherwise bridged weekends display 3 points low.
+        incomingPodium:
+          idx > 0 && lastRacePodium(perRound[idx - 1].get(driverId) ?? []),
+      }).base;
+      const arr =
+        form.byDriver[driverId] ??
+        (form.byDriver[driverId] = Array(rounds.length).fill(null));
+      arr[idx] = points;
+      if (points > form.max) form.max = points;
+    }
   }
 
   return form;
@@ -644,9 +653,15 @@ export async function getDriverProfile(
       }
 
       const order = ["qualifying", "race1", "race2", "race3"];
+      // Sessions from the immediately previous round — the cross-round podium
+      // bridge is strictly adjacent, so it resets when she skipped a round.
+      let prevRoundSessions: DriverSession[] = [];
       for (const round of rounds) {
         const roundResults = byRound.get(round.id) ?? [];
-        if (roundResults.length === 0) continue;
+        if (roundResults.length === 0) {
+          prevRoundSessions = [];
+          continue;
+        }
 
         const driverSessions: DriverSession[] = [];
         const summary: DriverRoundResult["sessions"] = [];
@@ -667,7 +682,11 @@ export async function getDriverProfile(
           });
         }
 
-        const points = scoreDriverWeekend({ sessions: driverSessions }).base;
+        const points = scoreDriverWeekend({
+          sessions: driverSessions,
+          incomingPodium: lastRacePodium(prevRoundSessions),
+        }).base;
+        prevRoundSessions = driverSessions;
         seasonPoints += points;
         summary.sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
         history.push({

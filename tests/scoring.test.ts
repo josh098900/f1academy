@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   fastestLapBonus,
+  lastRacePodium,
   positionDelta,
   qualifyingPoints,
   raceScore,
@@ -207,5 +208,45 @@ describe("scoreUserRound — full team for the worked example", () => {
     });
     expect(r.transferPenalty).toBe(0);
     expect(r.roundPoints).toBe(229);
+  });
+});
+
+describe("lastRacePodium — the cross-round streak bridge", () => {
+  it("uses the FINAL race of the weekend, not the first", () => {
+    // race1 podium but race2 (the final race) P5 — no bridge out.
+    expect(
+      lastRacePodium([quali(1), race("race1", 2, 3), race("race2", 5, 1)])
+    ).toBe(false);
+    // race1 P9 but race2 podium — bridges out.
+    expect(
+      lastRacePodium([quali(4), race("race1", 9, 6), race("race2", 3, 5)])
+    ).toBe(true);
+  });
+
+  it("ignores qualifying entirely", () => {
+    expect(lastRacePodium([quali(1)])).toBe(false);
+  });
+
+  it("requires a classified finish", () => {
+    expect(
+      lastRacePodium([race("race2", 2, 1, { status: "dsq" })])
+    ).toBe(false);
+  });
+
+  it("is false for an empty weekend (driver didn't race the prior round)", () => {
+    expect(lastRacePodium([])).toBe(false);
+  });
+
+  it("feeding it into the next weekend matches the engine's bridge maths", () => {
+    const prevRound = [quali(2), race("race1", 6, 4), race("race2", 1, 2)];
+    const withBridge = scoreDriverWeekend({
+      sessions: [quali(3), race("race1", 3, 6)],
+      incomingPodium: lastRacePodium(prevRound),
+    });
+    const without = scoreDriverWeekend({
+      sessions: [quali(3), race("race1", 3, 6)],
+    });
+    expect(withBridge.podiumStreak).toBe(3);
+    expect(withBridge.base - without.base).toBe(3);
   });
 });

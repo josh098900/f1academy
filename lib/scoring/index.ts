@@ -113,6 +113,21 @@ export type WeekendScore = {
 
 const RACE_ORDER: RaceType[] = ["race1", "race2", "race3"];
 
+// Was the FINAL race in this session set a podium? This is the cross-round
+// streak bridge: pass the previous round's sessions here and feed the result
+// into the next round's `incomingPodium`. Every aggregation that replays
+// completed rounds (driver profiles, form sparklines, Coach standings, price
+// recalibration) must do this, or its totals drift 3 points from the real
+// scorer (lib/scoring/run.ts) whenever a driver podiums out of one round and
+// into the next.
+export function lastRacePodium(sessions: DriverSession[]): boolean {
+  for (let i = RACE_ORDER.length - 1; i >= 0; i--) {
+    const race = sessions.find((s) => s.type === RACE_ORDER[i]);
+    if (race) return isPodium(race);
+  }
+  return false;
+}
+
 // Score one driver's weekend for one team. `boost` doubles the total.
 export function scoreDriverWeekend(input: WeekendInput): WeekendScore {
   const boost = input.boost ?? false;

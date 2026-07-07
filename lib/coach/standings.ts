@@ -3,7 +3,11 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/db/types";
-import { type DriverSession, scoreDriverWeekend } from "@/lib/scoring";
+import {
+  type DriverSession,
+  lastRacePodium,
+  scoreDriverWeekend,
+} from "@/lib/scoring";
 
 type DB = SupabaseClient<Database>;
 
@@ -20,15 +24,18 @@ export async function getDriverPoints(
 ): Promise<Map<number, number>> {
   const points = new Map<number, number>();
 
-  // 1. Completed prior rounds for this season.
+  // 1. Completed prior rounds for this season, in order — the cross-round
+  // podium bridge needs each round to see its predecessor.
   const { data: rounds } = await db
     .from("rounds")
-    .select("id")
+    .select("id, round_number")
     .eq("season_id", seasonId)
     .lt("round_number", beforeRound)
     .eq("status", "complete")
+    .order("round_number", { ascending: true })
     .throwOnError();
   if (rounds.length === 0) return points;
+  const roundIndex = new Map(rounds.map((r, i) => [r.id, i]));
 
   // 2. All sessions across those rounds, in one query.
   const roundIds = rounds.map((r) => r.id);
@@ -50,14 +57,16 @@ export async function getDriverPoints(
     .in("session_id", sessions.map((s) => s.id))
     .throwOnError();
 
-  // Group by (round, driver) so each driver-weekend is scored once with the
-  // right session set rather than mixing results across rounds.
-  const byRoundDriver = new Map<string, DriverSession[]>();
+  // Group per round index (ascending) so each round can look up the previous
+  // round's sessions for the cross-round podium-streak bridge — matching the
+  // real scorer's incomingPodium semantics.
+  const perRound: Map<number, DriverSession[]>[] = rounds.map(() => new Map());
   for (const r of results) {
     const meta = sessionMeta.get(r.session_id);
     if (!meta) continue;
-    const key = `${meta.roundId}:${r.driver_id}`;
-    const arr = byRoundDriver.get(key) ?? [];
+    const idx = roundIndex.get(meta.roundId);
+    if (idx === undefined) continue;
+    const arr = perRound[idx].get(r.driver_id) ?? [];
     arr.push({
       type: meta.type as DriverSession["type"],
       position: r.position,
@@ -65,15 +74,18 @@ export async function getDriverPoints(
       status: r.status as DriverSession["status"],
       fastestLap: r.fastest_lap,
     });
-    byRoundDriver.set(key, arr);
+    perRound[idx].set(r.driver_id, arr);
   }
 
-  for (const [key, sess] of byRoundDriver) {
-    const driverId = Number(key.split(":")[1]);
-    points.set(
-      driverId,
-      (points.get(driverId) ?? 0) + scoreDriverWeekend({ sessions: sess }).base
-    );
+  for (let idx = 0; idx < perRound.length; idx++) {
+    for (const [driverId, sess] of perRound[idx]) {
+      const base = scoreDriverWeekend({
+        sessions: sess,
+        incomingPodium:
+          idx > 0 && lastRacePodium(perRound[idx - 1].get(driverId) ?? []),
+      }).base;
+      points.set(driverId, (points.get(driverId) ?? 0) + base);
+    }
   }
 
   return points;
