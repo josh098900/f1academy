@@ -30,9 +30,15 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // IMPORTANT: do not run any logic between createServerClient and getUser().
+  // IMPORTANT: do not run any logic between createServerClient and getClaims().
   // Doing so can intermittently log users out (per Supabase SSR guidance).
-  await supabase.auth.getUser();
+  //
+  // getClaims() verifies the JWT locally against the project's public signing
+  // key (cached JWKS) instead of round-tripping to the Auth server like
+  // getUser() — the expired-session refresh still happens exactly as before.
+  // Requires asymmetric JWT signing keys (dashboard → JWT Keys); with legacy
+  // HS256 keys it transparently falls back to a server-side check.
+  await supabase.auth.getClaims();
 
   return supabaseResponse;
 }
