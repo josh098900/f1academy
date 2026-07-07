@@ -1,5 +1,7 @@
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
+import { GAME_DATA_TAG } from "@/lib/cached-queries";
 import { isAuthorizedCron } from "@/lib/cron-auth";
 import { runScoreRound } from "@/lib/scoring/run";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -138,6 +140,9 @@ export async function GET(request: Request) {
     }
     if (applied > 0) synced.push({ round: round.round_number, applied, scored });
   }
+
+  // Synced results (and any re-score) change the cached shared reads.
+  if (synced.length > 0) revalidateTag(GAME_DATA_TAG, "max");
 
   return NextResponse.json({ ok: true, synced });
 }

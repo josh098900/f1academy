@@ -5,13 +5,11 @@ import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { InAppBrowserBanner } from "@/components/auth/InAppBrowserBanner";
 import { LockCountdown } from "@/components/team/LockCountdown";
 import { CONTACT_EMAIL } from "@/lib/contact";
-import { getActiveRound } from "@/lib/queries";
-import { createClient } from "@/lib/supabase/server";
+import { getActiveRoundCached } from "@/lib/cached-queries";
 
 export default async function Home() {
   // rounds RLS is public-readable so this works for unauthenticated visitors.
-  const supabase = await createClient();
-  const round = await getActiveRound(supabase);
+  const round = await getActiveRoundCached();
   const circuitArt = round?.circuit_name
     ? CIRCUIT_ART[round.circuit_name]
     : undefined;
