@@ -7,6 +7,12 @@ import { LockCountdown } from "@/components/team/LockCountdown";
 import { CONTACT_EMAIL } from "@/lib/contact";
 import { getActiveRoundCached } from "@/lib/cached-queries";
 
+// Without this, the cached round read makes this page prerenderable and the
+// build executes it — requiring live Supabase env/access at build time, which
+// breaks hermetic CI and couples deploys to DB availability. Render on demand
+// instead; the read itself is still served from the data cache.
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
   // rounds RLS is public-readable so this works for unauthenticated visitors.
   const round = await getActiveRoundCached();

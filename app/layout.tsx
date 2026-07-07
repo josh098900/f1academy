@@ -1,4 +1,5 @@
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata } from "next";
 import { Bebas_Neue, Archivo, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
@@ -46,6 +47,7 @@ export default function RootLayout({
       <body className="min-h-dvh bg-base font-body text-primary antialiased">
         {children}
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
