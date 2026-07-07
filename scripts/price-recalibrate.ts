@@ -13,7 +13,11 @@
 import { createClient } from "@supabase/supabase-js";
 
 import type { Database } from "../db/types";
-import { type DriverSession, scoreDriverWeekend } from "../lib/scoring";
+import {
+  type DriverSession,
+  lastRacePodium,
+  scoreDriverWeekend,
+} from "../lib/scoring";
 
 const FLOOR = 4;
 const CAP = 15;
@@ -62,8 +66,11 @@ async function main() {
     `Recalibrating R${targetNumber} prices from ${completed.length} completed round(s)…`
   );
 
-  // Per driver: list of weekend points across completed rounds.
+  // Per driver: list of weekend points across completed rounds. `completed`
+  // is ascending, and we carry each round's sessions forward so the
+  // cross-round podium-streak bridge matches the real scorer.
   const points = new Map<number, number[]>();
+  let prevByDriver = new Map<number, DriverSession[]>();
   for (const round of completed) {
     const { data: sessions } = await db
       .from("sessions")
@@ -92,9 +99,13 @@ async function main() {
       byDriver.set(r.driver_id, arr);
     }
     for (const [driverId, sess] of byDriver) {
-      const score = scoreDriverWeekend({ sessions: sess }).base;
+      const score = scoreDriverWeekend({
+        sessions: sess,
+        incomingPodium: lastRacePodium(prevByDriver.get(driverId) ?? []),
+      }).base;
       (points.get(driverId) ?? points.set(driverId, []).get(driverId)!).push(score);
     }
+    prevByDriver = byDriver;
   }
 
   // Target round's entrants (full-season + wildcards contracted for it).
