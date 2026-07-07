@@ -4,16 +4,18 @@ import Link from "next/link";
 import { FormSpark } from "@/components/FormSpark";
 import { PageHeader } from "@/components/PageHeader";
 import { teamColor } from "@/lib/f1-teams";
-import { getActiveRound, getRoundLineup, getSeasonForm } from "@/lib/queries";
-import { createClient } from "@/lib/supabase/server";
+import {
+  getActiveRoundCached,
+  getRoundLineupCached,
+  getSeasonFormCached,
+} from "@/lib/cached-queries";
 
 export default async function DriversPage() {
-  const supabase = await createClient();
-  const round = await getActiveRound(supabase);
+  const round = await getActiveRoundCached();
   const [lineup, form] = round
     ? await Promise.all([
-        getRoundLineup(supabase, round),
-        getSeasonForm(supabase, round.season_id, round.round_number),
+        getRoundLineupCached(round.id, round.season_id, round.round_number),
+        getSeasonFormCached(round.season_id, round.round_number),
       ])
     : [[], null];
 

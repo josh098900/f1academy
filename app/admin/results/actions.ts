@@ -1,8 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 import { getAdmin } from "@/lib/admin";
+import { GAME_DATA_TAG } from "@/lib/cached-queries";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { deriveGrid, type RaceType } from "@/lib/wiki/grid";
 import { resultsForRound } from "@/lib/wiki/results";
@@ -44,6 +45,7 @@ export async function saveSessionResults(input: {
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/admin/results");
+  revalidateTag(GAME_DATA_TAG, "max"); // results feed form sparklines + driver profiles
   return { ok: true };
 }
 

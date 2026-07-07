@@ -9,10 +9,13 @@ import { TeamPicker } from "@/components/team/TeamPicker";
 import { getPreRaceInsight } from "../coach-actions";
 import { getCurrentUser } from "@/lib/auth";
 import {
-  getActiveRound,
+  getActiveRoundCached,
+  getRoundLineupCached,
+  getSeasonFormCached,
+} from "@/lib/cached-queries";
+import {
+  type LineupDriver,
   getCoachEnabled,
-  getRoundLineup,
-  getSeasonForm,
   getTransferContext,
   getUserTeam,
 } from "@/lib/queries";
@@ -25,7 +28,7 @@ export default async function TeamPage() {
   if (!user) redirect("/login");
   const supabase = await createClient();
 
-  const round = await getActiveRound(supabase);
+  const round = await getActiveRoundCached();
 
   if (!round) {
     return (
@@ -42,11 +45,11 @@ export default async function TeamPage() {
 
   const [lineup, saved, transfers, coachEnabled, seasonForm] =
     await Promise.all([
-      getRoundLineup(supabase, round),
+      getRoundLineupCached(round.id, round.season_id, round.round_number),
       getUserTeam(supabase, user.id, round.id),
       getTransferContext(supabase, user.id, round),
       getCoachEnabled(supabase, user.id),
-      getSeasonForm(supabase, round.season_id, round.round_number),
+      getSeasonFormCached(round.season_id, round.round_number),
     ]);
 
   // Prefill: this round's saved team, otherwise carry over the previous
@@ -126,7 +129,7 @@ function LockedTeam({
   lineup,
   saved,
 }: {
-  lineup: Awaited<ReturnType<typeof getRoundLineup>>;
+  lineup: LineupDriver[];
   saved: Awaited<ReturnType<typeof getUserTeam>>;
 }) {
   if (!saved) {

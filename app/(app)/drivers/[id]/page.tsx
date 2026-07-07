@@ -6,11 +6,8 @@ import { CoachCard } from "@/components/coach/CoachCard";
 import { CoachOptIn } from "@/components/coach/CoachOptIn";
 import { getCurrentUser } from "@/lib/auth";
 import { teamColor } from "@/lib/f1-teams";
-import {
-  type DriverRoundResult,
-  getCoachEnabled,
-  getDriverProfile,
-} from "@/lib/queries";
+import { getDriverProfileCached } from "@/lib/cached-queries";
+import { type DriverRoundResult, getCoachEnabled } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
 
 import { getDriverTake } from "../../coach-actions";
@@ -38,7 +35,7 @@ export default async function DriverPage({
   const supabase = await createClient();
   const user = await getCurrentUser();
   const [profile, coachEnabled] = await Promise.all([
-    getDriverProfile(supabase, driverId),
+    getDriverProfileCached(driverId),
     user ? getCoachEnabled(supabase, user.id) : Promise.resolve(false),
   ]);
   if (!profile) notFound();

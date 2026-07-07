@@ -11,8 +11,8 @@ import { AnnouncementItem } from "@/components/news/AnnouncementItem";
 import { LockCountdown } from "@/components/team/LockCountdown";
 import { getCurrentUser } from "@/lib/auth";
 import { CONTACT_EMAIL } from "@/lib/contact";
+import { getActiveRoundCached } from "@/lib/cached-queries";
 import {
-  getActiveRound,
   getAnnouncements,
   getCoachEnabled,
   getDisplayName,
@@ -29,7 +29,7 @@ export default async function DashboardPage() {
   if (!user) redirect("/login");
   const supabase = await createClient();
 
-  const round = await getActiveRound(supabase);
+  const round = await getActiveRoundCached();
   const [
     saved,
     scored,
