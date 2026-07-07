@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 
 import type { SaveTeamResult } from "@/app/(app)/team/actions";
 import { Button } from "@/components/ui/button";
-import type { LineupDriver } from "@/lib/queries";
+import type { LineupDriver, SeasonForm } from "@/lib/queries";
 import {
   BUDGET_CAP,
   SQUAD_SIZE,
@@ -28,6 +28,7 @@ type Props = {
   initialWildcard?: boolean;
   baseline?: number[] | null;
   wildcardUsedInPriorRound?: boolean;
+  seasonForm?: SeasonForm; // per-round form bars on each card, when available
   onSave: (input: {
     driverIds: number[];
     boostDriverId: number;
@@ -42,6 +43,7 @@ export function TeamPicker({
   initialWildcard = false,
   baseline = null,
   wildcardUsedInPriorRound = false,
+  seasonForm,
   onSave,
 }: Props) {
   const [selected, setSelected] = useState<number[]>(initialSelected);
@@ -149,6 +151,15 @@ export function TeamPicker({
             selected={selected.includes(d.driverId)}
             isBoost={boost === d.driverId}
             disabled={full && !selected.includes(d.driverId)}
+            form={
+              seasonForm?.byDriver[d.driverId]
+                ? {
+                    values: seasonForm.byDriver[d.driverId],
+                    roundNumbers: seasonForm.roundNumbers,
+                    max: seasonForm.max,
+                  }
+                : undefined
+            }
             onToggle={() => toggle(d.driverId)}
             onBoost={() => chooseBoost(d.driverId)}
           />

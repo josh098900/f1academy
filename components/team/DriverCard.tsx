@@ -1,5 +1,6 @@
 "use client";
 
+import { FormSpark } from "@/components/FormSpark";
 import { teamColor } from "@/lib/f1-teams";
 import type { LineupDriver } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -14,11 +15,18 @@ import { cn } from "@/lib/utils";
 // it throws "Event handlers cannot be passed to Client Component props" at
 // request time (the locked view's Yellow Flag on R3 lock day). Build can't
 // catch it: dynamic pages aren't rendered at build time.
+export type DriverFormProps = {
+  values: (number | null)[];
+  roundNumbers: number[];
+  max: number;
+};
+
 type Props = {
   driver: LineupDriver;
   selected?: boolean;
   isBoost?: boolean;
   disabled?: boolean;
+  form?: DriverFormProps; // per-round points sparkline, when the page has it
   onToggle?: () => void;
   onBoost?: () => void;
 };
@@ -28,6 +36,7 @@ export function DriverCard({
   selected = false,
   isBoost = false,
   disabled = false,
+  form,
   onToggle,
   onBoost,
 }: Props) {
@@ -86,6 +95,16 @@ export function DriverCard({
           {driver.team} · {driver.f1Partner ?? "—"}
         </div>
       </div>
+
+      {/* Per-round form bars — only when the page supplies season form */}
+      {form ? (
+        <FormSpark
+          values={form.values}
+          roundNumbers={form.roundNumbers}
+          max={form.max}
+          className="shrink-0"
+        />
+      ) : null}
 
       {/* Boost toggle — only on selected cards */}
       {selected && onBoost ? (

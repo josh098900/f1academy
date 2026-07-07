@@ -1,15 +1,21 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { FormSpark } from "@/components/FormSpark";
 import { PageHeader } from "@/components/PageHeader";
 import { teamColor } from "@/lib/f1-teams";
-import { getActiveRound, getRoundLineup } from "@/lib/queries";
+import { getActiveRound, getRoundLineup, getSeasonForm } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DriversPage() {
   const supabase = await createClient();
   const round = await getActiveRound(supabase);
-  const lineup = round ? await getRoundLineup(supabase, round) : [];
+  const [lineup, form] = round
+    ? await Promise.all([
+        getRoundLineup(supabase, round),
+        getSeasonForm(supabase, round.season_id, round.round_number),
+      ])
+    : [[], null];
 
   return (
     <main>
@@ -49,6 +55,14 @@ export default async function DriversPage() {
                     {d.team} · {d.f1Partner ?? "—"}
                   </p>
                 </div>
+                {form?.byDriver[d.driverId] ? (
+                  <FormSpark
+                    values={form.byDriver[d.driverId]}
+                    roundNumbers={form.roundNumbers}
+                    max={form.max}
+                    className="shrink-0"
+                  />
+                ) : null}
                 <span
                   data-tabular
                   className="shrink-0 font-mono text-sm text-primary tabular-nums"

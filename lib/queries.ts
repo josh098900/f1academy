@@ -454,6 +454,86 @@ export async function getRoundLineup(
   return lineup;
 }
 
+// Per-driver weekend points for each completed round — the picker's form
+// sparklines. Plain-JSON (Records, not Maps) because it crosses the
+// server→client boundary into TeamPicker. `byDriver` arrays are aligned to
+// `roundNumbers`; null = the driver didn't race that round (wildcards).
+// `max` is the best single weekend in the set, so bars normalise comparably
+// across every card on the grid.
+export type SeasonForm = {
+  roundNumbers: number[];
+  byDriver: Record<number, (number | null)[]>;
+  max: number;
+};
+
+// Batched: three queries regardless of round count (same shape as
+// lib/coach/standings and getDriverProfile).
+export async function getSeasonForm(
+  supabase: DB,
+  seasonId: number,
+  beforeRound: number
+): Promise<SeasonForm> {
+  const { data: rounds } = await supabase
+    .from("rounds")
+    .select("id, round_number")
+    .eq("season_id", seasonId)
+    .lt("round_number", beforeRound)
+    .eq("status", "complete")
+    .order("round_number", { ascending: true })
+    .throwOnError();
+
+  const roundNumbers = rounds.map((r) => r.round_number);
+  const form: SeasonForm = { roundNumbers, byDriver: {}, max: 1 };
+  if (rounds.length === 0) return form;
+  const roundIndex = new Map(rounds.map((r, i) => [r.id, i]));
+
+  const { data: sessions } = await supabase
+    .from("sessions")
+    .select("id, round_id, session_type")
+    .in("round_id", rounds.map((r) => r.id))
+    .throwOnError();
+  if (sessions.length === 0) return form;
+  const sessionMeta = new Map(
+    sessions.map((s) => [s.id, { roundId: s.round_id, type: s.session_type }])
+  );
+
+  const { data: results } = await supabase
+    .from("session_results")
+    .select("session_id, driver_id, position, grid_position, status, fastest_lap")
+    .in("session_id", sessions.map((s) => s.id))
+    .throwOnError();
+
+  const byRoundDriver = new Map<string, DriverSession[]>();
+  for (const r of results) {
+    const meta = sessionMeta.get(r.session_id);
+    if (!meta) continue;
+    const key = `${meta.roundId}:${r.driver_id}`;
+    const arr = byRoundDriver.get(key) ?? [];
+    arr.push({
+      type: meta.type as DriverSession["type"],
+      position: r.position,
+      gridPosition: r.grid_position,
+      status: r.status as DriverSession["status"],
+      fastestLap: r.fastest_lap,
+    });
+    byRoundDriver.set(key, arr);
+  }
+
+  for (const [key, sess] of byRoundDriver) {
+    const [roundId, driverId] = key.split(":").map(Number);
+    const idx = roundIndex.get(roundId);
+    if (idx === undefined) continue;
+    const points = scoreDriverWeekend({ sessions: sess }).base;
+    const arr =
+      form.byDriver[driverId] ??
+      (form.byDriver[driverId] = Array(rounds.length).fill(null));
+    arr[idx] = points;
+    if (points > form.max) form.max = points;
+  }
+
+  return form;
+}
+
 export type DriverRoundResult = {
   roundNumber: number;
   circuitName: string;

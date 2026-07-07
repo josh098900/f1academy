@@ -12,6 +12,7 @@ import {
   getActiveRound,
   getCoachEnabled,
   getRoundLineup,
+  getSeasonForm,
   getTransferContext,
   getUserTeam,
 } from "@/lib/queries";
@@ -39,12 +40,14 @@ export default async function TeamPage() {
     );
   }
 
-  const [lineup, saved, transfers, coachEnabled] = await Promise.all([
-    getRoundLineup(supabase, round),
-    getUserTeam(supabase, user.id, round.id),
-    getTransferContext(supabase, user.id, round),
-    getCoachEnabled(supabase, user.id),
-  ]);
+  const [lineup, saved, transfers, coachEnabled, seasonForm] =
+    await Promise.all([
+      getRoundLineup(supabase, round),
+      getUserTeam(supabase, user.id, round.id),
+      getTransferContext(supabase, user.id, round),
+      getCoachEnabled(supabase, user.id),
+      getSeasonForm(supabase, round.season_id, round.round_number),
+    ]);
 
   // Prefill: this round's saved team, otherwise carry over the previous
   // round's. Sanitise against THIS round's lineup — a carried-over squad can
@@ -103,6 +106,7 @@ export default async function TeamPage() {
             </div>
             <TeamPicker
               lineup={lineup}
+              seasonForm={seasonForm}
               initialSelected={initialSelected}
               initialBoost={initialBoost}
               initialWildcard={saved?.wildcardUsed ?? false}
