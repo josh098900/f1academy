@@ -1,6 +1,10 @@
 // Pure team-selection rules — see docs/files/SCORING_SYSTEM.md and PRODUCT_SPEC.md.
 // No dependencies, so the UI, the server action, and tests all share one source
 // of truth.
+//
+// NOTE: the DB enforces these same rules as a backstop against direct REST
+// writes (supabase/migrations/20260708003000_harden_user_teams_writes.sql).
+// If a rule or constant changes here, change the trigger too.
 
 export const BUDGET_CAP = 40;
 export const SQUAD_SIZE = 4;
