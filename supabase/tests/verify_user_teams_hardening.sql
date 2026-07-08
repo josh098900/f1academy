@@ -138,8 +138,10 @@ begin
   end;
 
   -- Unconditional: aborts the block, rolling back every test write, and is
-  -- the only output channel the SQL editor reliably displays.
-  raise exception e'\n== user_teams hardening verification — red box is expected =='
-    || e'\n== every line should say PASS (SKIP is fine where noted) ==\n%',
-    v_report;
+  -- the only output channel the SQL editor reliably displays. (RAISE's format
+  -- string can't be concatenated, hence USING message.)
+  raise exception using message =
+    e'\n== user_teams hardening verification — red box is expected =='
+    || e'\n== every line should say PASS (SKIP is fine where noted) ==\n'
+    || v_report;
 end $$;
