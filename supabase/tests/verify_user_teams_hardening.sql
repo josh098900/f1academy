@@ -17,6 +17,7 @@
 do $$
 declare
   v_uid uuid;
+  v_other uuid;              -- a DIFFERENT user — cross-user attack target
   v_open_round integer;      -- earliest upcoming round (the active one)
   v_locked_round integer;    -- any completed round
   v_ids integer[];           -- the user's current saved team
@@ -52,6 +53,8 @@ begin
     select driver_id, price_millions from public.driver_prices
      where round_id = v_open_round order by price_millions desc limit 4
   ) d;
+  -- Grabbed while still postgres — the impersonated player couldn't read this.
+  select u.id into v_other from public.users u where u.id <> v_uid limit 1;
 
   -- Become that player, as PostgREST would.
   perform set_config(
@@ -136,6 +139,30 @@ begin
   exception when others then
     v_report := v_report || E'\nFAIL 6: legitimate resave was rejected (' || sqlerrm || ')';
   end;
+
+  -- 7. Writing another user's row must hit the ownership guard BEFORE any
+  -- user_teams read — the specific message matters: the wildcard error here
+  -- would mean the trigger leaked whether the victim spent their wildcard.
+  if v_other is null then
+    v_report := v_report || E'\nSKIP 7: only one user in the database.';
+  else
+    begin
+      insert into public.user_teams
+        (user_id, round_id, driver_ids, boost_driver_id, wildcard_used)
+      values (v_other, v_open_round, v_cheap, v_cheap[1], true);
+      v_report := v_report || E'\nFAIL 7: wrote a team for another user';
+    exception when others then
+      if sqlerrm like '%own team%' then
+        v_report := v_report || E'\nPASS 7: cross-user write hit the ownership guard (' || sqlerrm || ')';
+      elsif sqlerrm like '%wildcard%' then
+        v_report := v_report || E'\nFAIL 7: wildcard state LEAKED across users (' || sqlerrm || ')';
+      else
+        v_report := v_report
+          || E'\nFAIL 7: blocked, but not by the ownership guard — leak still possible ('
+          || sqlerrm || ')';
+      end if;
+    end;
+  end if;
 
   -- Unconditional: aborts the block, rolling back every test write, and is
   -- the only output channel the SQL editor reliably displays. (RAISE's format
