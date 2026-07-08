@@ -18,13 +18,17 @@ do $$
 declare
   v_uid uuid;
   v_other uuid;              -- a DIFFERENT user — cross-user attack target
+  v_mate uuid;               -- a league-mate of v_uid — privacy test
   v_open_round integer;      -- earliest upcoming round (the active one)
+  v_future_round integer;    -- the NEXT upcoming round after the active one
   v_locked_round integer;    -- any completed round
+  v_has_locked boolean;      -- v_uid fielded a team in a completed round
   v_ids integer[];           -- the user's current saved team
   v_cheap integer[];         -- 4 cheapest priced drivers for the open round
   v_dear integer[];          -- 4 priciest — over-budget attempt
   v_dear_sum numeric;
   v_transfers integer;
+  v_cnt integer;
   v_report text := '';
 begin
   -- A player with a team for the active round.
@@ -55,6 +59,21 @@ begin
   ) d;
   -- Grabbed while still postgres — the impersonated player couldn't read this.
   select u.id into v_other from public.users u where u.id <> v_uid limit 1;
+  select lm2.user_id into v_mate
+    from public.league_members lm1
+    join public.league_members lm2
+      on lm2.league_id = lm1.league_id and lm2.user_id <> lm1.user_id
+   where lm1.user_id = v_uid
+   limit 1;
+  select r.id into v_future_round
+    from public.rounds r
+   where r.status = 'upcoming' and r.id <> v_open_round
+   order by r.round_number
+   limit 1;
+  select exists (
+    select 1 from public.user_teams ut
+     where ut.user_id = v_uid and ut.round_id = v_locked_round
+  ) into v_has_locked;
 
   -- Become that player, as PostgREST would.
   perform set_config(
@@ -162,6 +181,59 @@ begin
           || sqlerrm || ')';
       end if;
     end;
+  end if;
+
+  -- 8. Writing a FUTURE upcoming round must be rejected by the active-round
+  -- check specifically ('yet'), not just missing prices — otherwise a player
+  -- could bank a stale transfer baseline whenever two rounds are priced.
+  if v_future_round is null then
+    v_report := v_report || E'\nSKIP 8: no second upcoming round to test against.';
+  else
+    begin
+      insert into public.user_teams (user_id, round_id, driver_ids, boost_driver_id)
+      values (v_uid, v_future_round, v_cheap, v_cheap[1]);
+      v_report := v_report || E'\nFAIL 8: wrote a team into a future round';
+    exception when others then
+      if sqlerrm like '%yet%' then
+        v_report := v_report || E'\nPASS 8: future round rejected (' || sqlerrm || ')';
+      else
+        v_report := v_report
+          || E'\nFAIL 8: blocked, but not by the active-round check (' || sqlerrm || ')';
+      end if;
+    end;
+  end if;
+
+  -- 9. Pre-lock privacy: a league-mate must NOT see this round's picks, but
+  -- MUST still see completed rounds (the league feature). Runs last — it
+  -- re-impersonates the league-mate.
+  if v_mate is null then
+    v_report := v_report || E'\nSKIP 9: the sampled player has no league-mate.';
+  else
+    perform set_config(
+      'request.jwt.claims',
+      json_build_object('sub', v_mate, 'role', 'authenticated')::text,
+      true
+    );
+    select count(*) into v_cnt
+      from public.user_teams
+     where user_id = v_uid and round_id = v_open_round;
+    if v_cnt > 0 then
+      v_report := v_report || E'\nFAIL 9a: league-mate can read PRE-LOCK picks';
+    else
+      v_report := v_report || E'\nPASS 9a: pre-lock picks hidden from league-mate';
+    end if;
+    if v_locked_round is null or not v_has_locked then
+      v_report := v_report || E'\nSKIP 9b: no locked-round team to check visibility on.';
+    else
+      select count(*) into v_cnt
+        from public.user_teams
+       where user_id = v_uid and round_id = v_locked_round;
+      if v_cnt > 0 then
+        v_report := v_report || E'\nPASS 9b: locked-round team still visible to league-mate';
+      else
+        v_report := v_report || E'\nFAIL 9b: locked-round visibility broken (league feature)';
+      end if;
+    end if;
   end if;
 
   -- Unconditional: aborts the block, rolling back every test write, and is
