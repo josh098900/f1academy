@@ -28,9 +28,19 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  // Absolute base for og:image/twitter:image URLs — crawlers require absolute
+  // URLs, and without this the file-convention images resolve unreliably.
+  metadataBase: new URL("https://f1academy-mu.vercel.app"),
   title: "Academy Fantasy — Fantasy League for F1 Academy",
   description:
     "Pick a team within budget, score points across the season, and compete with friends. A free-to-play fantasy game for the F1 Academy series. Entertainment only.",
+  openGraph: {
+    siteName: "Academy Fantasy",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+  },
 };
 
 export default function RootLayout({
