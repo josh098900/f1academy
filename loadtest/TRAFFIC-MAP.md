@@ -206,23 +206,22 @@ team before lock — irrelevant here, since no journey step does that.
 
 ---
 
-## Open decision for §Task 3 (how to represent the save)
+## How the save is represented (resolved 2026-07-09)
 
-Because the real save is a hard-to-replay server action, pick how the flagship
-scenario stands in for it:
+The real save is a hard-to-replay server action, so the flagship stands in for
+it. **Decision: A now, B later.**
 
-- **A — Direct `user_teams` upsert (Layer 1).** *Recommended.* Stable, and it
-  exercises the exact DB trigger + row that the real save bottlenecks on — the
+- **A — Direct `user_teams` upsert (Layer 1). ← flagship uses this.** Stable, and
+  it exercises the exact DB trigger + row that the real save bottlenecks on — the
   true ceiling. Bypasses Next server-action overhead (framing/validation TS),
-  which is cheap relative to the DB anyway.
+  which is cheap relative to the DB anyway. `deadline-hour.yaml`'s `save_team`
+  step is the PostgREST upsert shown in §3.
 - **B — Thin JSON API route** (`app/api/loadtest/save-team/route.ts`) mirroring
-  `saveTeam`'s logic, callable with a Bearer token. Measures the full Next→DB
-  path with a stable contract, at the cost of one route that exists only for
-  testing (guard it to non-production).
-- **C — Replay the captured server-action POST.** Highest fidelity, most
-  fragile: the `Next-Action` hash changes every build and the RSC body is
-  internal. Not worth it.
+  `saveTeam`, Bearer-callable, guarded off in production. **Deferred** — add only
+  if we later want to attribute latency to the Next layer specifically, once the
+  DB ceiling from A is known.
+- **C — Replay the captured server-action POST.** Rejected: the `Next-Action`
+  hash changes every build and the RSC body is internal. Too fragile.
 
-Recommendation: **A for the flagship** (find the DB ceiling first), and revisit
-**B** only if we later want to attribute latency to the Next layer specifically.
-This is the one thing to confirm before `deadline-hour.yaml` is written.
+So the flagship measures the database ceiling first (the prime suspect); the
+Next-layer attribution is a follow-up experiment, not a launch blocker.
