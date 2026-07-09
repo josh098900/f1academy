@@ -199,7 +199,14 @@ anonymous_users = 30
 # Number of sessions that can be refreshed in a 5 minute interval per IP address.
 token_refresh = 150
 # Number of sign up and sign-in requests that can be made in a 5 minute interval per IP address (excludes anonymous users).
-sign_in_sign_ups = 30
+# Raised from the default 30 for load testing: gridload's deadline-hour spike
+# ramps to 400 VUs, so ~380 logins land in one 30s window — all from the load
+# generator's single IP. Real deadline-hour traffic is one login per user from
+# ~400 different IPs and never approaches this limit, so the limiter is a
+# single-host test artifact that would otherwise mask the real bottleneck.
+# Local stack only; production/staging limits live in the Supabase dashboard.
+# See loadtest/TRAFFIC-MAP.md § Rate limits.
+sign_in_sign_ups = 1000
 # Number of OTP / Magic link verifications that can be made in a 5 minute interval per IP address.
 token_verifications = 30
 # Number of Web3 logins that can be made in a 5 minute interval per IP address.

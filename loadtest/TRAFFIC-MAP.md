@@ -186,14 +186,48 @@ The July perf pass changed the target materially — factor it in:
 - **RPC aggregation:** `global_leaderboard` / `league_standings` do ranking
   aggregation. Cheap at 27 users; re-check at seeded 500.
 
-## Rate limits
+## Rate limits — the login burst will trip Auth unless we raise the local limit
 
-Supabase local Auth applies rate limits (configurable in
-[config.toml](../supabase/config.toml) `[auth.rate_limit]`). A scenario that
-re-authenticates every loop will trip them and measure the limiter, not the app.
-**Mitigation:** each VU logs in once and reuses its token/cookie for the whole
-run (tokens last ~1h; runs are ≤10m). PostgREST/Next have no built-in per-user
-limiter locally, so the read/save steps are unthrottled — good.
+Verified in [config.toml](../supabase/config.toml) `[auth.rate_limit]`:
+
+| Limit | Default | Scope | Hit by us? |
+|---|---|---|---|
+| `sign_in_sign_ups` | **30 / 5 min** | **per IP address** | **YES — badly** |
+| `token_refresh` | 150 / 5 min | per IP address | No |
+
+**The problem.** Even with each VU logging in exactly once, gridload's spike
+ramps 20 → 400 VUs in 30s, so ~380 token requests land inside one 30-second
+window. Against a 30-per-5-minutes limit that's ~12× over. The run would
+measure Supabase's rate limiter, not Academy Fantasy.
+
+**Why raising the limit is correct, not cheating.** The limit is **per IP
+address**. At a real deadline hour, 400 users log in from ~400 different IPs —
+one login each — and nobody comes close to 30/5min. Our load generator is a
+single host, so all 400 logins share one IP. **The limiter is an artifact of
+load-testing from one machine, not a constraint real traffic would meet.**
+Leaving it in place would mask the bottleneck we're actually hunting (the save
+trigger under contention).
+
+**Mitigation, in order of preference:**
+
+1. **Local:** raise `sign_in_sign_ups` in `supabase/config.toml` (done — set to
+   1000, with a comment explaining why). Applies on the next `supabase start`.
+2. **Staging (real Supabase project):** `config.toml` doesn't apply. Raise it in
+   the dashboard under Auth → Rate Limits before any run, or pre-mint tokens
+   out-of-band and skip the login step.
+3. Watch for `429` in gridload's status-code breakdown regardless — it's the
+   tell that a limiter, not the app, is what we measured.
+
+**Consequences to state plainly:** this deliberately means our load test does
+*not* exercise Supabase Auth's anti-abuse limiting. That's intentional and
+correct for this experiment. Token refresh is never hit (tokens last ~1h, runs
+are ≤10m). PostgREST and Next have no built-in per-user limiter locally, so the
+read/save steps are unthrottled — which is what we want.
+
+**VU identity note (gridload v0.3.0):** `${VU_ID}` is 1-based and IDs stay dense
+— at target `n`, exactly VUs 1..n run, and ramp-down retires the highest IDs
+first. So seed **at least `peak_vus`** accounts (400 for deadline-hour; the seed
+default of 500 covers it) and every VU that logs in will find its account.
 
 ## RLS check for load-test users
 
