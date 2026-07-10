@@ -1,0 +1,109 @@
+# smoke — one virtual user, one pass through the deadline-hour journey.
+#
+# Validates that every request, payload and capture is CORRECT before any real
+# load is generated. Run this after every seed and before deadline-hour.yaml.
+#
+#   eval "$(pnpm exec supabase status -o env | sed 's/^/export /')"
+#   export SUPABASE_ANON_KEY=$PUBLISHABLE_KEY LOADTEST_PASSWORD=…
+#   gridload run loadtest/smoke.yaml
+#
+# Every step targets Supabase directly (:54321) — see TRAFFIC-MAP.md. The team
+# save is the PostgREST upsert that fires the enforce_team_rules trigger, which
+# is the real bottleneck candidate; the app's own save is a Next Server Action
+# and is not replayable over plain HTTP.
+#
+# The literal round_id / driver_ids below MUST match the seeded database —
+# `pnpm exec tsx loadtest/seed.ts` prints the values to use.
+
+target:
+  base_url: http://localhost:54321
+  allowed_hosts:
+    - localhost
+  default_headers:
+    apikey: ${SUPABASE_ANON_KEY}
+
+load:
+  model: vus
+  profile: constant
+  vus: 1
+  iterations: 1
+
+journey:
+  name: deadline-hour-user
+  steps:
+    # Password grant. The app's UI only offers Google OAuth and magic links —
+    # neither is replayable — but seeded users get a password, and the Auth
+    # server always exposes this endpoint. Tokens last ~1h, far longer than a
+    # run, so each VU logs in once and reuses the token.
+    - name: login
+      request:
+        method: POST
+        path: /auth/v1/token?grant_type=password
+        json:
+          email: loadtest+${VU_ID}@example.com
+          password: ${LOADTEST_PASSWORD}
+      capture:
+        token: $.access_token
+        uid: $.user.id # the direct upsert needs the player's own uuid
+      expect:
+        status: 200
+      abort_on_fail: true # nothing downstream works without a token
+
+    - think: 1s-3s
+
+    # The team picker's price list. In the app this is baked into the /team
+    # server render; at the DB layer it's this read.
+    - name: fetch_prices
+      request:
+        method: GET
+        path: /rest/v1/driver_prices?round_id=eq.4&select=driver_id,price_millions
+        headers:
+          Authorization: Bearer ${token}
+      expect:
+        status: 200
+
+    - name: fetch_my_team
+      request:
+        method: GET
+        path: /rest/v1/user_teams?user_id=eq.${uid}&round_id=eq.4&select=driver_ids,boost_driver_id
+        headers:
+          Authorization: Bearer ${token}
+      expect:
+        status: 200
+
+    - think: 5s-15s # the user agonises over their lineup
+
+    # THE HOT PATH. Fires enforce_team_rules: ownership, active-round, distinct-4,
+    # budget, eligibility, transfers recompute, wildcard. transfers_used is
+    # deliberately not sent — the trigger computes it and ignores anything we say.
+    # 201 on first insert, 200 when overwriting the seeded row.
+    - name: save_team
+      request:
+        method: POST
+        path: /rest/v1/user_teams?on_conflict=user_id,round_id
+        headers:
+          Authorization: Bearer ${token}
+          Prefer: resolution=merge-duplicates
+        json:
+          user_id: ${uid}
+          round_id: 4
+          driver_ids: [4, 11, 1, 8] # £38.0M of the £40M cap
+          boost_driver_id: 4
+      expect:
+        status: [200, 201]
+
+    - think: 2s-4s
+
+    # Standings. SECURITY DEFINER RPC doing rank() over every scored player.
+    # Requires a bearer token: `anon` was revoked from this function in
+    # migration 20260612143132 (it leaked display names + uuids).
+    - name: view_standings
+      request:
+        method: POST
+        path: /rest/v1/rpc/global_leaderboard
+        headers:
+          Authorization: Bearer ${token}
+        json:
+          p_limit: 100
+      expect:
+        status: 200

@@ -48,3 +48,6 @@ next-env.d.ts
 scripts/launch-stats.ts
 scripts/battig-email.ts
 scripts/race-wrap-email.ts
+
+# gridload run artifacts (large, machine-specific)
+loadtest/results/

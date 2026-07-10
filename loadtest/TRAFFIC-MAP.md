@@ -119,12 +119,24 @@ scenario payload are coupled (the seed decides which `driver_ids` are legal).
 
 `GET http://localhost:3000/leaderboard` — Server Component
 ([leaderboard page](../app/(app)/leaderboard/page.tsx)) calling the
-`global_leaderboard(p_limit)` SECURITY DEFINER RPC (granted to `anon` +
-`authenticated`). Mounts `<RealtimeRefresh>` (§6).
+`global_leaderboard(p_limit)` SECURITY DEFINER RPC. Mounts `<RealtimeRefresh>`
+(§6).
 
-The RPC can also be hit directly as a Layer-1 proxy for its DB cost:
-`POST http://localhost:54321/rest/v1/rpc/global_leaderboard` with
-`{ "p_limit": 100 }` and a Bearer token.
+**`anon` CANNOT call this RPC.** The original migration granted it to `anon` +
+`authenticated`, but
+[20260612143132](../supabase/migrations/20260612143132_restrict_leaderboard_to_authenticated.sql)
+revoked `anon` **and** `PUBLIC` (it leaked display names and user uuids to
+anyone holding the publishable key). Verified against the local stack:
+
+```
+apikey only                → 401 {"code":"42501","message":"permission denied for function global_leaderboard"}
+apikey + Bearer <token>    → 200, 100 ranked rows
+```
+
+So the Layer-1 proxy for its DB cost needs a real user token:
+`POST http://localhost:54321/rest/v1/rpc/global_leaderboard`, body
+`{ "p_limit": 100 }`, headers `apikey` **and** `Authorization: Bearer <token>`.
+`p_limit` has a default, so `{}` also works; the function clamps to [1, 500].
 
 ### 5. View a league page — Next server + RPC (Layer 2)
 
@@ -259,3 +271,48 @@ it. **Decision: A now, B later.**
 
 So the flagship measures the database ceiling first (the prime suspect); the
 Next-layer attribution is a follow-up experiment, not a launch blocker.
+
+---
+
+## Verified against the local stack (2026-07-10)
+
+Everything below was executed, not inferred. `supabase db reset` reproduced all
+16 migrations cleanly on a blank Postgres; `scripts/seed.ts` then
+`loadtest/seed.ts` populated 500 players, 500 teams and 1,500 score rows.
+
+| Check | Result |
+|---|---|
+| Password grant (`grant_type=password`) with publishable **or** legacy anon key | `200`, returns `access_token` + `user.id` |
+| `capture` of `$.access_token` and `$.user.id` | both work — the upsert needs the uuid |
+| Direct `user_teams` upsert, valid squad | `200` on overwrite, `201` on first insert → `expect.status: [200, 201]` |
+| Direct upsert, duplicate drivers | `400` — *"A team must be 4 different drivers."* |
+| Direct upsert sending `transfers_used: 99` | stored as `0` — trigger recomputes |
+| `global_leaderboard` as `anon` | `401 permission denied` |
+| `global_leaderboard` as `authenticated` | `200`, 100 ranked rows |
+| `driver_prices` / own `user_teams` reads with Bearer | `200` |
+
+**The load path really does exercise the trigger.** The 400/`"4 different
+drivers"` rejection and the silent `transfers_used` correction prove the
+PostgREST upsert is enforced by `enforce_team_rules`, exactly as the app's
+Server Action save is — which is what makes option A an honest stand-in.
+
+### Baseline: `global_leaderboard` is not the bottleneck
+
+`gridload attack` against the RPC, 500 seeded players (rank() over 1,500
+score rows):
+
+| Rate | Requests | Success | p50 | p99 | Sched lag (mean) |
+|---|---|---|---|---|---|
+| 25/s | 750 | 100% | 7.51ms | 9.73ms | 962µs |
+| 1000/s | 15,000 | 100% | 1.65ms | 3.84ms | 87µs |
+
+Latency never departs from Service — no queueing, no saturation, even at the
+1000 req/s safety ceiling. **Two cautions for anyone reading these numbers:**
+
+1. **Latency falls as rate rises** (p50 7.5ms → 1.65ms). This is *not* cold
+   cache — re-running the 25/s baseline warm reproduced it (p95 9.14ms vs
+   9.33ms). It's CPU frequency scaling: at 25 req/s the machine idles between
+   requests and downclocks. So `gridload report --compare` is only meaningful
+   **between runs at the same rate on the same machine.**
+2. Keeper baseline lives in `loadtest/results/` (gitignored) and was recorded on
+   a v0.4.0 binary, which round-trips expect-verdicts; older files do not.
