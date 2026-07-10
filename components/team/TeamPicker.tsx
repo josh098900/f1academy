@@ -2,9 +2,9 @@
 
 import { useMemo, useState, useTransition } from "react";
 
-import type { SaveTeamResult } from "@/app/(app)/team/actions";
 import { Button } from "@/components/ui/button";
 import type { LineupDriver, SeasonForm } from "@/lib/queries";
+import type { SaveTeamResult } from "@/lib/team-save";
 import {
   BUDGET_CAP,
   SQUAD_SIZE,

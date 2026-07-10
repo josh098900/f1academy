@@ -402,3 +402,52 @@ next honest question is not "how do we make the save faster" but "what does the
 *Next server* cost per request" — which is exactly the deferred option B (a thin
 JSON API route) from §5. That is now worth doing, because the DB ceiling has
 been measured and is not where the time goes.
+
+### Option B built: the Next hop costs ~26ms, and it's the auth round-trip
+
+`app/api/loadtest/save-team` (Bearer-callable, `LOADTEST_ROUTES_ENABLED=1`,
+404 otherwise) runs the **real** `saveTeam` logic via the shared `saveTeamFor`
+core. Same save, 50 rps, 30s, open-loop, direct-to-PostgREST vs through Next:
+
+| Path | p50 | p90 | p99 | what it does |
+|---|---|---|---|---|
+| Direct `user_teams` upsert | 4.0ms | 5.2ms | 6.6ms | one write + trigger |
+| Through Next (`saveTeamFor`) | 30.5ms | 33.7ms | 38.0ms | getUser + ~6 reads + the same write |
+
+Both 100% success. The Next path costs **~26ms more per save** (`gridload report
+--compare`: p50 +547%). Decomposed against the same stack:
+
+- **`supabase.auth.getUser()` ≈ 20ms — the single largest component.** The save
+  authenticates by round-tripping the token to GoTrue. This is deliberate: the
+  July perf pass replaced `getUser()` with local `getClaims()` in
+  `getCurrentUser` (reads), but **kept `getUser()` in mutations** so a revoked
+  session is rejected immediately rather than at token expiry. This experiment
+  prices that safety choice at ~20ms per save.
+- **~6 uncached reads** in `saveTeamFor` (`getActiveRound`, `getRoundLineup`,
+  `getTransferContext`, `getUserTeam`) — a few ms each, sequential-ish. Note
+  these use the *uncached* query helpers, not the `…Cached` variants the page
+  render uses, because a save must validate against live state.
+- **The write itself is ~4ms** — identical to the direct path.
+
+**So the real save is ~30ms locally (likely ~50–80ms in prod across the
+Vercel↔Supabase network), and the cost is the Next layer's auth + validation
+reads, not the database.** The lever, if saves ever needed to be faster, is
+`getClaims()` in the mutation path (trading immediate revocation for up-to-1h
+lag) — the same trade the perf pass made for reads. At current scale a 30–80ms
+save is a non-issue, so this stays as documented headroom, not a change.
+
+**Correction to the deadline-hour numbers:** the VU run's `save_team` step used
+the *direct upsert* stand-in (~2.5ms), which understated the real save by ~12×.
+The real save is ~30ms. Still comfortably survivable at 400 concurrent users —
+but the honest per-save cost is 30ms, and it lives in the Next auth hop.
+
+### Where the load-test arc ends
+
+Nothing in the deadline-hour journey is a scaling bottleneck. The two largest
+single costs are both deliberate security choices, both fine at this scale:
+**login bcrypt (~67ms, once per session)** and **the save's `getUser()` auth
+round-trip (~20ms)**. The database — reads, the leaderboard aggregation, and the
+hardened `enforce_team_rules` trigger under 400 concurrent savers — is never the
+constraint. The app survives deadline hour with wide margin; the "bottleneck"
+the summer went looking for is auth latency in the framework layer, and it's a
+knob we understand rather than a wall we hit.
