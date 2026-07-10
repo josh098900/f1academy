@@ -260,11 +260,13 @@ This matters more for *reading the results* than for rate limits:
   re-authenticate approximately never. The login cost in these runs is an
   artifact of the load model, not of deadline hour.
 
-The clean fix is a **once-per-VU setup phase** (parked in gridload's `IDEAS.md`).
-Until it exists, read the **per-step** table and ignore the aggregate
-percentiles. Token refresh is never hit (tokens last ~1h, runs are ≤10m).
-PostgREST and Next have no built-in per-user limiter locally, so the read/save
-steps are unthrottled — which is what we want.
+**Fixed in gridload v0.5.0 (2026-07-10):** a `journey.setup:` phase runs once per
+VU before its first iteration, captures persisting into every iteration. `login`
+now lives in `setup:` in both scenarios, so it runs ~once per VU instead of once
+per iteration — matching how a real session behaves. A ramp-restarted VU re-runs
+setup, so the spike's climb still exercises auth roughly once per user. Token
+refresh is never hit (tokens last ~1h, runs are ≤10m). PostgREST and Next have no
+built-in per-user limiter locally, so the read/save steps are unthrottled.
 
 **VU identity note (gridload v0.3.0):** `${VU_ID}` is 1-based and IDs stay dense
 — at target `n`, exactly VUs 1..n run, and ramp-down retires the highest IDs
@@ -371,6 +373,29 @@ are hot in shared buffers.
 
 The only expensive thing in the journey is **`login`**, and it is expensive
 on purpose (bcrypt) and unrepresentative (see "VUs re-authenticate", above).
+
+### Re-run with the setup phase (gridload v0.5.0) — aggregates now describe the app
+
+Moving `login` into `journey.setup:` (runs once per VU) and re-running the same
+spike:
+
+| Metric | login in `steps:` (per-iteration) | login in `setup:` (once per VU) |
+|---|---|---|
+| Total logins | 8,934 | **400** (one per VU) |
+| Whole-run p50 | 1.88ms | 2.25ms |
+| Whole-run p90 | 67.24ms | **4.21ms** |
+| Whole-run p95 | 69.80ms | **5.55ms** |
+| Whole-run p99 | 78.64ms | 76.68ms |
+| `save_team` p50 / p99 | 1.57 / 7.78ms | 2.54 / 8.40ms |
+
+The aggregate p90/p95 collapse by ~13–16× — they now track the non-login steps
+instead of bcrypt. **p99 stays high on purpose:** 400 logins is 1.1% of 35,614
+requests, so they sit exactly at the p99 boundary; login is now confined to the
+extreme tail rather than dominating from p90 up. To clean p99 too, either run
+longer (login's fixed 400 becomes a smaller fraction) or read `save_team`'s own
+p99 (8.4ms), which is what actually matters. `save_team` reproducing its ~2ms /
+~8ms profile across two independent runs is the real headline: **the hardened
+save path holds at 400 concurrent users, twice.**
 
 **Conclusion: at deadline-hour scale, the database is not the constraint.** The
 next honest question is not "how do we make the save faster" but "what does the
