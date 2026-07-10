@@ -27,46 +27,77 @@ localhost/127.0.0.1 (or an explicitly allowlisted staging URL).
 
 | File | Purpose | Status |
 |---|---|---|
-| `TRAFFIC-MAP.md` | Audited request map: what deadline hour hits, Next vs Supabase-direct, bottleneck predictions | ✅ done |
-| `seed.ts` | Provisions N `loadtest+*` users with valid teams in **local** Supabase; `--purge` teardown | ⏳ Task 2 |
-| `smoke.yaml` | 1 VU, 1 pass through the journey — validates scenario correctness before real load | ⏳ Task 3 (needs gridload M2) |
-| `deadline-hour.yaml` | The flagship: spike profile, real endpoints, realistic think-times | ⏳ Task 3 (needs gridload M3) |
+| `TRAFFIC-MAP.md` | Audited request map: what deadline hour hits, Next vs Supabase-direct, bottleneck predictions, verified results | ✅ done |
+| `seed.ts` | Provisions N `loadtest+*` users with valid teams + score history in **local** Supabase; `--purge` teardown | ✅ done |
+| `smoke.yaml` | 1 VU, 1 pass through the journey — validates scenario correctness before real load | ✅ passing |
+| `deadline-hour.yaml` | The flagship: spike profile, real endpoints, realistic think-times | ✅ runs (gridload ≥ v0.3.0) |
+| `results/` | gridload `--output` artifacts. Gitignored — large and machine-specific | — |
 
 **Read `TRAFFIC-MAP.md` first** — it explains why the save hot path is a Next
-Server Action (not a REST call) and how the scenarios stand in for it.
+Server Action (not a REST call), how the scenarios stand in for it, and what has
+actually been measured.
+
+## Two things that will bite you
+
+1. **The scenarios contain literal `round_id` and `driver_ids`.** gridload
+   interpolates strings, not JSON integers, so these can't be `${VARS}`. They
+   must match the seeded database — `seed.ts` prints the correct values at the
+   end of every run. Re-seed after `supabase db reset` and check them.
+2. **`supabase/config.toml` raises the auth `sign_in_sign_ups` limit.** The
+   spike fires ~380 logins from one IP in 30s; the stock limit is 30 per 5
+   minutes. Without the raise the run measures Supabase's rate limiter. A pile
+   of `429`s on the `login` step is the tell.
 
 ## Running a test end to end
 
 ```bash
-# one-time local stack
-supabase start                      # local Supabase (API gateway :54321)
-pnpm build && pnpm start            # the app under test on :3000 — NOT `pnpm dev`
-                                    # (dev mode measures Turbopack recompiles, not the app)
+# 1. local stack + schema + reference data (drivers, rounds, prices)
+pnpm exec supabase start                    # API gateway on :54321
+pnpm exec supabase db reset                 # applies every migration to a blank db
+eval "$(pnpm exec supabase status -o env | sed 's/^/export /')"
+SUPABASE_URL=$API_URL SUPABASE_SERVICE_KEY=$SERVICE_ROLE_KEY \
+  pnpm exec tsx scripts/seed.ts             # seasons, drivers, rounds, sessions
 
-# seed load-test data into LOCAL supabase only
-LOADTEST_PASSWORD=… npx tsx loadtest/seed.ts           # default 500 users
+# 2. load-test data: 500 players, teams for the active round, score history
+SUPABASE_URL=$API_URL SUPABASE_SERVICE_KEY=$SERVICE_ROLE_KEY \
+  LOADTEST_PASSWORD=… pnpm exec tsx loadtest/seed.ts
+#    ^ prints the round_id / driver_ids the scenarios must use
 
-# validate the scenario is correct (1 user, 1 pass) — needs gridload ≥ v0.2.0
+# 3. env for gridload
+export SUPABASE_ANON_KEY=$PUBLISHABLE_KEY   # legacy $ANON_KEY works too
+export LOADTEST_PASSWORD=…
+
+# 4. validate the journey is correct (1 user, 1 pass) — ALWAYS before load
 gridload run loadtest/smoke.yaml
 
-# the real thing — needs gridload ≥ v0.3.0 (spike profile)
-gridload run loadtest/deadline-hour.yaml --output results/$(date +%F-%H%M).json
+# 5. the real thing
+gridload run loadtest/deadline-hour.yaml \
+  --output loadtest/results/$(date +%F-%H%M).jsonl
+
+# 6. read it back, or diff two runs
+gridload report loadtest/results/<run>.jsonl --html report.html
+gridload report after.jsonl --compare before.jsonl
 
 # teardown
-npx tsx loadtest/seed.ts --purge
+SUPABASE_URL=$API_URL SUPABASE_SERVICE_KEY=$SERVICE_ROLE_KEY \
+  pnpm exec tsx loadtest/seed.ts --purge
 ```
 
-Required env vars (never committed): `LOADTEST_PASSWORD`, and the local
-Supabase keys printed by `supabase status` (`SUPABASE_ANON_KEY` /
-`SERVICE_ROLE_KEY`).
+The Next.js app only needs to be running (`pnpm build && pnpm start`, **never
+`pnpm dev`** — dev mode measures Turbopack recompiles) if a scenario targets
+`:3000`. The current scenarios go straight to Supabase, so they don't need it.
 
-## gridload milestone dependencies
+Required env (never committed): `LOADTEST_PASSWORD`, plus the local keys from
+`supabase status`.
 
-The scenarios can't run until the engine supports what they use:
+## gridload versions
 
-- `smoke.yaml` needs **M2** (scenarios + virtual users + capture/interpolation).
-- `deadline-hour.yaml` needs **M3** (the `spike` load profile).
+- `smoke.yaml` needs **v0.2.0** (scenarios, VUs, capture/interpolation).
+- `deadline-hour.yaml` needs **v0.3.0** (the `spike` profile).
+- `gridload report --html` / `--compare` need **v0.4.0**. Result files written
+  by older binaries record only transport errors, so `expect` failures re-read
+  as successes — re-run any baseline you intend to keep on v0.4.0.
 
-So the natural order is: audit + seed here (no engine dependency) → validate
-`smoke.yaml` the day gridload tags v0.2.0 → run `deadline-hour.yaml` at v0.3.0.
-See the gridload repo's briefing for engine milestones.
+`gridload report --compare` diffs percentiles between two runs. It is only
+meaningful **between runs at the same rate on the same machine** — see the CPU
+frequency-scaling caution in `TRAFFIC-MAP.md`.

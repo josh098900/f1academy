@@ -119,12 +119,24 @@ scenario payload are coupled (the seed decides which `driver_ids` are legal).
 
 `GET http://localhost:3000/leaderboard` — Server Component
 ([leaderboard page](../app/(app)/leaderboard/page.tsx)) calling the
-`global_leaderboard(p_limit)` SECURITY DEFINER RPC (granted to `anon` +
-`authenticated`). Mounts `<RealtimeRefresh>` (§6).
+`global_leaderboard(p_limit)` SECURITY DEFINER RPC. Mounts `<RealtimeRefresh>`
+(§6).
 
-The RPC can also be hit directly as a Layer-1 proxy for its DB cost:
-`POST http://localhost:54321/rest/v1/rpc/global_leaderboard` with
-`{ "p_limit": 100 }` and a Bearer token.
+**`anon` CANNOT call this RPC.** The original migration granted it to `anon` +
+`authenticated`, but
+[20260612143132](../supabase/migrations/20260612143132_restrict_leaderboard_to_authenticated.sql)
+revoked `anon` **and** `PUBLIC` (it leaked display names and user uuids to
+anyone holding the publishable key). Verified against the local stack:
+
+```
+apikey only                → 401 {"code":"42501","message":"permission denied for function global_leaderboard"}
+apikey + Bearer <token>    → 200, 100 ranked rows
+```
+
+So the Layer-1 proxy for its DB cost needs a real user token:
+`POST http://localhost:54321/rest/v1/rpc/global_leaderboard`, body
+`{ "p_limit": 100 }`, headers `apikey` **and** `Authorization: Bearer <token>`.
+`p_limit` has a default, so `{}` also works; the function clamps to [1, 500].
 
 ### 5. View a league page — Next server + RPC (Layer 2)
 
@@ -186,14 +198,78 @@ The July perf pass changed the target materially — factor it in:
 - **RPC aggregation:** `global_leaderboard` / `league_standings` do ranking
   aggregation. Cheap at 27 users; re-check at seeded 500.
 
-## Rate limits
+## Rate limits — the login burst will trip Auth unless we raise the local limit
 
-Supabase local Auth applies rate limits (configurable in
-[config.toml](../supabase/config.toml) `[auth.rate_limit]`). A scenario that
-re-authenticates every loop will trip them and measure the limiter, not the app.
-**Mitigation:** each VU logs in once and reuses its token/cookie for the whole
-run (tokens last ~1h; runs are ≤10m). PostgREST/Next have no built-in per-user
-limiter locally, so the read/save steps are unthrottled — good.
+Verified in [config.toml](../supabase/config.toml) `[auth.rate_limit]`:
+
+| Limit | Default | Scope | Hit by us? |
+|---|---|---|---|
+| `sign_in_sign_ups` | **30 / 5 min** | **per IP address** | **YES — badly** |
+| `token_refresh` | 150 / 5 min | per IP address | No |
+
+**Update (2026-07-10): measured, and the limiter never fired.** The 10-minute
+spike issued **8,934 logins** (~4,470 per 5-minute window — see "VUs
+re-authenticate" below), which is 4.4× over the *raised* limit of 1000, and
+returned **zero 429s**. Twelve rapid logins immediately afterwards also returned
+`200`. Conclusion: on this local GoTrue, `sign_in_sign_ups` does **not** gate
+`POST /auth/v1/token?grant_type=password` — it appears to cover signup/OTP
+paths. The raise below is therefore harmless insurance rather than the
+prerequisite it was originally documented as.
+
+**Do not assume the same on staging.** Hosted GoTrue enforces its own limits
+outside `config.toml`; check the dashboard (Auth → Rate Limits) before the first
+staging run, and watch the status-code breakdown for `429`.
+
+**The original (theoretical) concern**, retained because it still applies to any
+endpoint the limiter *does* cover: gridload's spike ramps 20 → 400 VUs in 30s,
+so ~380 token requests land inside one 30-second window. Against the stock
+30-per-5-minutes limit that is ~12× over.
+
+**Why raising the limit is correct, not cheating.** The limit is **per IP
+address**. At a real deadline hour, 400 users log in from ~400 different IPs —
+one login each — and nobody comes close to 30/5min. Our load generator is a
+single host, so all 400 logins share one IP. **The limiter is an artifact of
+load-testing from one machine, not a constraint real traffic would meet.**
+Leaving it in place would mask the bottleneck we're actually hunting (the save
+trigger under contention).
+
+**Mitigation, in order of preference:**
+
+1. **Local:** raise `sign_in_sign_ups` in `supabase/config.toml` (done — set to
+   1000). Applies on the next `supabase start`. Insurance, not a prerequisite.
+2. **Staging (real Supabase project):** `config.toml` doesn't apply. Raise it in
+   the dashboard under Auth → Rate Limits before any run, or pre-mint tokens
+   out-of-band and skip the login step.
+3. Watch for `429` in gridload's status-code breakdown regardless — it's the
+   tell that a limiter, not the app, is what we measured.
+
+### VUs re-authenticate on EVERY iteration — the load test's own worst step
+
+An earlier version of this document claimed "each VU logs in once and reuses its
+token for the whole run." **That is wrong.** gridload's VU model loops the whole
+journey, and `login` is step 1, so a VU logs in again on every pass. The
+10-minute spike, peaking at 400 VUs, performed **8,934 logins** — not 400.
+
+This matters more for *reading the results* than for rate limits:
+
+- Password verification is bcrypt, deliberately expensive. `login` measured
+  **p50 67ms** against **1–2ms** for every other step — roughly 40×.
+- Whole-run percentiles are therefore essentially "the login step": overall p90
+  (67ms) ≈ login's p50.
+- **Real users don't do this.** They hold a Supabase session for weeks and
+  re-authenticate approximately never. The login cost in these runs is an
+  artifact of the load model, not of deadline hour.
+
+The clean fix is a **once-per-VU setup phase** (parked in gridload's `IDEAS.md`).
+Until it exists, read the **per-step** table and ignore the aggregate
+percentiles. Token refresh is never hit (tokens last ~1h, runs are ≤10m).
+PostgREST and Next have no built-in per-user limiter locally, so the read/save
+steps are unthrottled — which is what we want.
+
+**VU identity note (gridload v0.3.0):** `${VU_ID}` is 1-based and IDs stay dense
+— at target `n`, exactly VUs 1..n run, and ramp-down retires the highest IDs
+first. So seed **at least `peak_vus`** accounts (400 for deadline-hour; the seed
+default of 500 covers it) and every VU that logs in will find its account.
 
 ## RLS check for load-test users
 
@@ -225,3 +301,79 @@ it. **Decision: A now, B later.**
 
 So the flagship measures the database ceiling first (the prime suspect); the
 Next-layer attribution is a follow-up experiment, not a launch blocker.
+
+---
+
+## Verified against the local stack (2026-07-10)
+
+Everything below was executed, not inferred. `supabase db reset` reproduced all
+16 migrations cleanly on a blank Postgres; `scripts/seed.ts` then
+`loadtest/seed.ts` populated 500 players, 500 teams and 1,500 score rows.
+
+| Check | Result |
+|---|---|
+| Password grant (`grant_type=password`) with publishable **or** legacy anon key | `200`, returns `access_token` + `user.id` |
+| `capture` of `$.access_token` and `$.user.id` | both work — the upsert needs the uuid |
+| Direct `user_teams` upsert, valid squad | `200` on overwrite, `201` on first insert → `expect.status: [200, 201]` |
+| Direct upsert, duplicate drivers | `400` — *"A team must be 4 different drivers."* |
+| Direct upsert sending `transfers_used: 99` | stored as `0` — trigger recomputes |
+| `global_leaderboard` as `anon` | `401 permission denied` |
+| `global_leaderboard` as `authenticated` | `200`, 100 ranked rows |
+| `driver_prices` / own `user_teams` reads with Bearer | `200` |
+
+**The load path really does exercise the trigger.** The 400/`"4 different
+drivers"` rejection and the silent `transfers_used` correction prove the
+PostgREST upsert is enforced by `enforce_team_rules`, exactly as the app's
+Server Action save is — which is what makes option A an honest stand-in.
+
+### Baseline: `global_leaderboard` is not the bottleneck
+
+`gridload attack` against the RPC, 500 seeded players (rank() over 1,500
+score rows):
+
+| Rate | Requests | Success | p50 | p99 | Sched lag (mean) |
+|---|---|---|---|---|---|
+| 25/s | 750 | 100% | 7.51ms | 9.73ms | 962µs |
+| 1000/s | 15,000 | 100% | 1.65ms | 3.84ms | 87µs |
+
+Latency never departs from Service — no queueing, no saturation, even at the
+1000 req/s safety ceiling. **Two cautions for anyone reading these numbers:**
+
+1. **Latency falls as rate rises** (p50 7.5ms → 1.65ms). This is *not* cold
+   cache — re-running the 25/s baseline warm reproduced it (p95 9.14ms vs
+   9.33ms). It's CPU frequency scaling: at 25 req/s the machine idles between
+   requests and downclocks. So `gridload report --compare` is only meaningful
+   **between runs at the same rate on the same machine.**
+2. Keeper baseline lives in `loadtest/results/` (gitignored) and was recorded on
+   a v0.4.0 binary, which round-trips expect-verdicts; older files do not.
+
+### Deadline hour, run for real — the prediction was wrong
+
+`gridload run loadtest/deadline-hour.yaml` — spike 20 → 400 VUs, 10 minutes,
+**43,841 requests, 100% success, every response a 200, zero 429s.**
+
+| Step | Requests | p50 | p99 | max |
+|---|---|---|---|---|
+| `login` | 8,934 | **67.11ms** | **89.85ms** | 185.86ms |
+| `fetch_prices` | 8,883 | 1.91ms | 7.52ms | 20.79ms |
+| `fetch_my_team` | 8,883 | 1.02ms | 3.46ms | 12.89ms |
+| **`save_team`** | 8,604 | **1.57ms** | **7.78ms** | 26.66ms |
+| `view_standings` | 8,537 | 1.95ms | 8.34ms | 20.63ms |
+
+**This document predicted the save hot path would bottleneck** — 400 concurrent
+savers upserting one row each, every write firing `enforce_team_rules` with its
+several `SELECT`s, plus row-lock contention on the `(user_id, round_id)` conflict
+target. **It didn't. `save_team` is the second-fastest step in the journey**:
+p50 1.57ms, p99 7.78ms, at 20× the current user base. The trigger's reads hit
+indexed columns and each VU contends only with itself (its own `user_id` row),
+so there is no shared lock to fight over. The `sessions`/`driver_prices` reads
+are hot in shared buffers.
+
+The only expensive thing in the journey is **`login`**, and it is expensive
+on purpose (bcrypt) and unrepresentative (see "VUs re-authenticate", above).
+
+**Conclusion: at deadline-hour scale, the database is not the constraint.** The
+next honest question is not "how do we make the save faster" but "what does the
+*Next server* cost per request" — which is exactly the deferred option B (a thin
+JSON API route) from §5. That is now worth doing, because the DB ceiling has
+been measured and is not where the time goes.

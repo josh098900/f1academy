@@ -1,0 +1,112 @@
+# deadline-hour — the flagship. Replays the hour before a round locks:
+# a quiet baseline, everyone piling in at once, then a cliff when the deadline
+# passes and the picker closes.
+#
+#   eval "$(pnpm exec supabase status -o env | sed 's/^/export /')"
+#   export SUPABASE_ANON_KEY=$PUBLISHABLE_KEY LOADTEST_PASSWORD=…
+#   gridload run loadtest/deadline-hour.yaml --output loadtest/results/$(date +%F-%H%M).jsonl
+#
+# Validate loadtest/smoke.yaml FIRST — it is the same journey at 1 VU.
+#
+# Prerequisites, both enforced by reality rather than by gridload:
+#   * seed >= peak_vus accounts (${VU_ID} is 1-based and dense: at target n,
+#     exactly VUs 1..n run). `LOADTEST_USERS=500` covers peak_vus: 400.
+#   * supabase/config.toml raises auth `sign_in_sign_ups` — the 30s ramp fires
+#     ~380 logins from ONE ip, and the stock 30-per-5-minutes limit would make
+#     this run measure Supabase's rate limiter. See TRAFFIC-MAP.md § Rate limits.
+#     A run full of 429s on the login step means that fix is missing.
+#
+# Everything targets Supabase directly (:54321); the app's own save is a Next
+# Server Action and is not replayable over plain HTTP. The save step below is
+# the PostgREST upsert that fires the same enforce_team_rules trigger, which is
+# the bottleneck candidate this run exists to find. See TRAFFIC-MAP.md § 5.
+#
+# The literal round_id / driver_ids MUST match the seeded database —
+# `pnpm exec tsx loadtest/seed.ts` prints the values to use.
+
+target:
+  base_url: http://localhost:54321
+  allowed_hosts:
+    - localhost
+  default_headers:
+    apikey: ${SUPABASE_ANON_KEY}
+
+load:
+  model: vus
+  profile: spike
+  baseline_vus: 20 # the quiet trickle before anyone panics
+  peak_vus: 400 # everyone at once
+  ramp_up: 30s # how fast the panic arrives
+  hold: 5m # sustained peak
+  total_duration: 10m # leftover splits evenly as baseline either side
+
+journey:
+  name: deadline-hour-user
+  steps:
+    - name: login
+      request:
+        method: POST
+        path: /auth/v1/token?grant_type=password
+        json:
+          email: loadtest+${VU_ID}@example.com
+          password: ${LOADTEST_PASSWORD}
+      capture:
+        token: $.access_token
+        uid: $.user.id
+      expect:
+        status: 200
+      abort_on_fail: true
+
+    - think: 1s-3s
+
+    - name: fetch_prices
+      request:
+        method: GET
+        path: /rest/v1/driver_prices?round_id=eq.4&select=driver_id,price_millions
+        headers:
+          Authorization: Bearer ${token}
+      expect:
+        status: 200
+
+    - name: fetch_my_team
+      request:
+        method: GET
+        path: /rest/v1/user_teams?user_id=eq.${uid}&round_id=eq.4&select=driver_ids,boost_driver_id
+        headers:
+          Authorization: Bearer ${token}
+      expect:
+        status: 200
+
+    - think: 5s-15s # agonising over the lineup
+
+    # THE HOT PATH — 400 concurrent savers upserting into user_teams, each write
+    # firing enforce_team_rules (ownership, active-round, distinct-4, budget,
+    # eligibility, transfers recompute, wildcard). Watch for row-lock contention
+    # on the (user_id, round_id) conflict target and the trigger's repeat reads.
+    - name: save_team
+      request:
+        method: POST
+        path: /rest/v1/user_teams?on_conflict=user_id,round_id
+        headers:
+          Authorization: Bearer ${token}
+          Prefer: resolution=merge-duplicates
+        json:
+          user_id: ${uid}
+          round_id: 4
+          driver_ids: [4, 11, 1, 8] # £38.0M of the £40M cap
+          boost_driver_id: 4
+      expect:
+        status: [200, 201]
+
+    - think: 2s-4s
+
+    - name: view_standings
+      request:
+        method: POST
+        path: /rest/v1/rpc/global_leaderboard
+        headers:
+          Authorization: Bearer ${token}
+        json:
+          p_limit: 100
+      expect:
+        status: 200
