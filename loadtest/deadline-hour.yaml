@@ -42,7 +42,15 @@ load:
 
 journey:
   name: deadline-hour-user
-  steps:
+
+  # Login runs ONCE per VU, before its first iteration — captures persist into
+  # every iteration. This matches reality (a real user holds a Supabase session
+  # for weeks and re-auths ~never) and keeps bcrypt out of the per-iteration
+  # numbers. Requires gridload >= v0.5.0. A ramp-restarted VU re-runs setup, so
+  # the spike's climb still exercises auth roughly once per user. Before v0.5.0
+  # this was step 1 of steps:, which re-authenticated every loop (~9k logins for
+  # a 400-VU run) and swamped the aggregate percentiles — see TRAFFIC-MAP.md.
+  setup:
     - name: login
       request:
         method: POST
@@ -55,8 +63,9 @@ journey:
         uid: $.user.id
       expect:
         status: 200
-      abort_on_fail: true
+      abort_on_fail: true # a VU with no token can't do anything
 
+  steps:
     - think: 1s-3s
 
     - name: fetch_prices

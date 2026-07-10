@@ -30,11 +30,12 @@ load:
 
 journey:
   name: deadline-hour-user
-  steps:
-    # Password grant. The app's UI only offers Google OAuth and magic links —
-    # neither is replayable — but seeded users get a password, and the Auth
-    # server always exposes this endpoint. Tokens last ~1h, far longer than a
-    # run, so each VU logs in once and reuses the token.
+
+  # Login once per VU (gridload >= v0.5.0). The app's UI only offers Google OAuth
+  # and magic links — neither replayable — but seeded users get a password and
+  # the Auth server always exposes this endpoint. Tokens last ~1h; captures
+  # persist into every iteration.
+  setup:
     - name: login
       request:
         method: POST
@@ -49,6 +50,7 @@ journey:
         status: 200
       abort_on_fail: true # nothing downstream works without a token
 
+  steps:
     - think: 1s-3s
 
     # The team picker's price list. In the app this is baked into the /team
