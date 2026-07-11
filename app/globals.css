@@ -166,3 +166,68 @@ body {
     opacity: 0.45;
   }
 }
+
+/* ── Pit-wall loader (components/PitwallLoader.tsx) ──────────────────────
+   Ported from the 1a "pit-wall chip" design comp. All motion is CSS-only so
+   the loader animates inside a loading.tsx boundary with zero JS, and all of
+   it stops under prefers-reduced-motion (a static car reads fine). */
+@keyframes f1-wheel {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes f1-streak {
+  0% {
+    transform: translateX(14px);
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-36px);
+    opacity: 0;
+  }
+}
+@keyframes f1-track {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+/* Four phrases share one 8s cycle via staggered delays (2s slots). */
+@keyframes f1-phrase {
+  0%,
+  4% {
+    opacity: 0;
+  }
+  8%,
+  22% {
+    opacity: 1;
+  }
+  26%,
+  100% {
+    opacity: 0;
+  }
+}
+.f1-wheel {
+  animation: f1-wheel 0.45s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.f1-streak {
+  animation: f1-streak 0.9s linear infinite;
+}
+.f1-track {
+  animation: f1-track 0.5s linear infinite;
+}
+.f1-phrase {
+  animation: f1-phrase 8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .f1-wheel,
+  .f1-streak,
+  .f1-track,
+  .f1-phrase {
+    animation: none;
+  }
+}
