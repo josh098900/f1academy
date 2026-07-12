@@ -75,6 +75,9 @@ export type CarFrame = {
   lap: number; // laps completed
   lapPosition: number; // 0→1 around the current lap — the renderer's input
   position: number; // 1-based race position
+  gapToLeader: number; // seconds behind the car in front of the race
+  lastLapTime: number | null; // her most recent completed lap
+  bestLapTime: number | null; // her best so far
   compound: CompoundId;
   wear: number; // 0→1
   mode: PaceMode;
@@ -93,6 +96,7 @@ export type Frame = {
 
 export type RaceEvent =
   | { t: number; lap: number; type: "overtake"; carId: string; onCarId: string; zone: string }
+  | { t: number; lap: number; type: "fastestLap"; carId: string; lapTime: number }
   | { t: number; lap: number; type: "defended"; carId: string; byCarId: string; zone: string }
   | { t: number; lap: number; type: "pit"; carId: string; to: CompoundId; duration: number }
   | { t: number; lap: number; type: "cliff"; carId: string } // tyres fell off the shelf
@@ -107,6 +111,7 @@ export type Classification = {
   gapToLeader: number; // seconds
   laps: number;
   pitStops: number;
+  bestLapTime: number | null;
 };
 
 export type RaceInput = {
@@ -126,4 +131,6 @@ export type RaceResult = {
   frames: Frame[];
   events: RaceEvent[];
   classification: Classification[];
+  // Who set the fastest lap of the race, and what it was. The purple time.
+  fastestLap: { carId: string; lapTime: number; lap: number } | null;
 };

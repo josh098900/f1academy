@@ -241,6 +241,55 @@ describe("simulateRace — the race actually happens", () => {
   });
 });
 
+describe("simulateRace — the timing screen", () => {
+  const r = race(grid(), 424242);
+
+  it("times every lap, and every lap is a plausible lap", () => {
+    const base = getTrack("zandvoort").baseLapTime;
+    for (const f of r.frames) {
+      for (const c of f.cars) {
+        if (c.lastLapTime === null) continue;
+        // Nothing quicker than a perfect lap, nothing slower than a lap with a
+        // 14s pit stop buried in it.
+        expect(c.lastLapTime).toBeGreaterThan(base * 0.85);
+        expect(c.lastLapTime).toBeLessThan(base * 1.6);
+        expect(c.bestLapTime!).toBeLessThanOrEqual(c.lastLapTime);
+      }
+    }
+  });
+
+  it("awards the fastest lap to whoever actually set it", () => {
+    expect(r.fastestLap).not.toBeNull();
+    const best = Math.min(
+      ...r.classification
+        .map((c) => c.bestLapTime)
+        .filter((x): x is number => x !== null)
+    );
+    expect(r.fastestLap!.lapTime).toBeCloseTo(best, 6);
+    const holder = r.classification.find((c) => c.id === r.fastestLap!.carId)!;
+    expect(holder.bestLapTime).toBeCloseTo(best, 6);
+  });
+
+  it("does not set the fastest lap on lap 1", () => {
+    // Cars used to be at full racing speed from a standstill, so lap 1 was the
+    // quickest lap anyone drove and the purple was ALWAYS lap 1 — wrong, and
+    // dull. A standing start costs you time; fuel burns off as the race runs.
+    // The purple should land where those curves cross: in the race, not at it.
+    for (let seed = 0; seed < 12; seed++) {
+      const result = race(grid(), seed * 31 + 9);
+      expect(result.fastestLap!.lap).toBeGreaterThan(1);
+    }
+  });
+
+  it("gives the leader a zero gap, and everyone else a growing one", () => {
+    for (const f of r.frames) {
+      const byPos = [...f.cars].sort((a, b) => a.position - b.position);
+      expect(byPos[0].gapToLeader).toBe(0);
+      for (const c of byPos) expect(c.gapToLeader).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
 describe("simulateRace — the pit lane is not the racing line", () => {
   it("never lets a car in the pits block a car on track", () => {
     // Josh spotted cars stopping dead on the start/finish line mid-race. A

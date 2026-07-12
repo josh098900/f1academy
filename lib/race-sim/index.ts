@@ -68,6 +68,8 @@ export type Tuning = {
   minPass: number;
   maxPass: number;
 
+  standingStartLoss: number; // seconds lost getting off the line on lap 1
+  fuelLoadLoss: number; // seconds a full tank costs; burns off across the race
   baseCrewTime: number; // stationary seconds before pit-crew upgrades
   crewTimeSaving: number; // a maxed crew saves this much
   maxStops: number;
@@ -92,6 +94,19 @@ export const DEFAULT_TUNING: Tuning = {
   wPower: 0.2,
   minPass: 0.03,
   maxPass: 0.85,
+
+  // Getting off the line from a standstill. Without it, cars are at full racing
+  // speed from t=0, lap 1 is artificially the quickest lap of anyone's race, and
+  // the fastest lap is therefore ALWAYS lap 1 — which is both wrong and dull.
+  standingStartLoss: 2.5,
+
+  // A full tank is heavy, and it burns off. Not a fifth system — it's a term in
+  // lap time, like tyre wear, and it's the other half of why the purple lap
+  // comes LATE in a real race: the car is getting quicker while the tyre gets
+  // slower, and the fastest lap is where those two curves cross. Without it the
+  // freshest tyre is always the quickest and the fastest lap is a lap-2
+  // formality nobody looks at.
+  fuelLoadLoss: 2.0,
 
   baseCrewTime: 2.5,
   crewTimeSaving: 1.2,
@@ -119,6 +134,9 @@ type CarState = {
   pitTimer: number; // seconds left stationary; > 0 means in the pits
   pitDuration: number; // the full length of the stop being served
   stops: number;
+  lastCrossT: number; // race time she last crossed the line
+  lastLapTime: number | null;
+  bestLapTime: number | null;
   finished: boolean;
   finishTime: number;
   cliffAnnounced: boolean;
@@ -145,7 +163,8 @@ function lapTimeFor(
   state: CarState,
   track: Track,
   inDirtyAir: boolean,
-  tune: Tuning
+  tune: Tuning,
+  raceLaps: number
 ): number {
   const { driver, car } = state.entrant;
   const driverFactor = 1 - tune.paceWeight * (driver.pace / 100);
@@ -156,6 +175,10 @@ function lapTimeFor(
   t += tyreLapDelta(COMPOUNDS[state.compound], state.wear);
   t += MODES[state.mode].lapDelta;
   if (inDirtyAir) t += tune.dirtyAirPenalty;
+  if (state.lapIndex === 0) t += tune.standingStartLoss; // off the line
+  // Heavy at the start, light at the flag.
+  const fuelLeft = Math.max(0, 1 - state.lapIndex / Math.max(1, raceLaps));
+  t += tune.fuelLoadLoss * fuelLeft;
   t += state.lapNoise;
 
   return Math.max(t, track.baseLapTime * 0.5); // never absurd
@@ -338,6 +361,9 @@ export function simulateRace(input: RaceInput): RaceResult {
     pitTimer: 0,
     pitDuration: 0,
     stops: 0,
+    lastCrossT: 0,
+    lastLapTime: null,
+    bestLapTime: null,
     finished: false,
     finishTime: 0,
     cliffAnnounced: false,
@@ -348,6 +374,7 @@ export function simulateRace(input: RaceInput): RaceResult {
   const events: RaceEvent[] = [];
   let t = 0;
   let finishedCount = 0;
+  let fastestLap: RaceResult["fastestLap"] = null;
 
   // Race order. Finishing the distance beats being anywhere on track, and
   // finishers are ranked by when they crossed — NOT by frozen progress, which
@@ -386,7 +413,7 @@ export function simulateRace(input: RaceInput): RaceResult {
       const car = onTrack[i];
       const ahead = onTrack[i - 1];
       const behind = onTrack[i + 1];
-      const lap = lapTimeFor(car, track, false, tune);
+      const lap = lapTimeFor(car, track, false, tune, laps);
       const gapAhead = ahead
         ? Math.max(0, (ahead.progress - car.progress) * lap)
         : Infinity;
@@ -409,20 +436,20 @@ export function simulateRace(input: RaceInput): RaceResult {
       }
       if (car.pitTimer > 0) {
         proposed.set(car, car.progress); // stationary in the box
-        lapTimes.set(car, lapTimeFor(car, track, false, tune));
+        lapTimes.set(car, lapTimeFor(car, track, false, tune, laps));
       }
     }
 
     for (let i = 0; i < onTrack.length; i++) {
       const car = onTrack[i];
       const ahead = onTrack[i - 1];
-      const roughLap = lapTimeFor(car, track, false, tune);
+      const roughLap = lapTimeFor(car, track, false, tune, laps);
       const gapAhead = ahead
         ? (ahead.progress - car.progress) * roughLap
         : Infinity;
       const inDirtyAir = gapAhead <= tune.dirtyAirWindow;
 
-      const lap = lapTimeFor(car, track, inDirtyAir, tune);
+      const lap = lapTimeFor(car, track, inDirtyAir, tune, laps);
       lapTimes.set(car, lap);
       proposed.set(car, car.progress + DT / lap);
     }
@@ -528,6 +555,36 @@ export function simulateRace(input: RaceInput): RaceResult {
         car.lapIndex = lapNow;
         rollLapNoise(car, rng, tune); // fresh scatter for the new lap
 
+        // Time the lap she just completed. The crossing is interpolated within
+        // the tick for the same reason the finish is: a lap timed to the 0.5s
+        // step boundary is a lap timed wrong, and these are the numbers the
+        // player reads off the screen.
+        const spanL = after - before;
+        const crossedAt =
+          spanL > 0
+            ? t + Math.min(1, Math.max(0, (lapNow - before) / spanL)) * DT
+            : t;
+        const lapTime = crossedAt - car.lastCrossT;
+        car.lastCrossT = crossedAt;
+        // Every lap is timed, pit laps included — a real screen shows those too,
+        // and a lap with a stop in it is ~17s slow, so it can never go purple.
+        if (lapTime > 0) {
+          car.lastLapTime = lapTime;
+          if (car.bestLapTime === null || lapTime < car.bestLapTime) {
+            car.bestLapTime = lapTime;
+          }
+          if (fastestLap === null || lapTime < fastestLap.lapTime) {
+            fastestLap = { carId: car.entrant.id, lapTime, lap: lapNow };
+            events.push({
+              t: crossedAt,
+              lap: lapNow,
+              type: "fastestLap",
+              carId: car.entrant.id,
+              lapTime,
+            });
+          }
+        }
+
         if (lapNow >= laps) {
           car.finished = true;
           // Interpolate WHEN in this tick she crossed the line. Without this,
@@ -591,23 +648,38 @@ export function simulateRace(input: RaceInput): RaceResult {
     // 6. Snapshot for the renderer.
     const ranked = order();
     const positionOf = new Map(ranked.map((c, i) => [c, i + 1]));
+    const leader = ranked[0];
     frames.push({
       t,
-      cars: cars.map<CarFrame>((car) => ({
-        id: car.entrant.id,
-        lap: Math.max(0, Math.floor(car.progress)),
-        lapPosition: ((car.progress % 1) + 1) % 1, // always 0→1
-        position: positionOf.get(car)!,
-        compound: car.compound,
-        wear: car.wear,
-        mode: car.mode,
-        inPit: car.pitTimer > 0,
-        pitProgress:
-          car.pitTimer > 0 && car.pitDuration > 0
-            ? Math.min(1, Math.max(0, 1 - car.pitTimer / car.pitDuration))
-            : null,
-        finished: car.finished,
-      })),
+      cars: cars.map<CarFrame>((car) => {
+        // The gap the timing screen shows: how far behind the race leader she
+        // is, in seconds, at her current pace. A finished car's gap is settled.
+        const lap = lapTimeFor(car, track, false, tune, laps);
+        const gapToLeader =
+          car === leader
+            ? 0
+            : car.finished && leader.finished
+              ? car.finishTime - leader.finishTime
+              : Math.max(0, (leader.progress - car.progress) * lap);
+        return {
+          id: car.entrant.id,
+          lap: Math.max(0, Math.floor(car.progress)),
+          lapPosition: ((car.progress % 1) + 1) % 1, // always 0→1
+          position: positionOf.get(car)!,
+          gapToLeader,
+          lastLapTime: car.lastLapTime,
+          bestLapTime: car.bestLapTime,
+          compound: car.compound,
+          wear: car.wear,
+          mode: car.mode,
+          inPit: car.pitTimer > 0,
+          pitProgress:
+            car.pitTimer > 0 && car.pitDuration > 0
+              ? Math.min(1, Math.max(0, 1 - car.pitTimer / car.pitDuration))
+              : null,
+          finished: car.finished,
+        };
+      }),
     });
 
     t += DT;
@@ -633,7 +705,16 @@ export function simulateRace(input: RaceInput): RaceResult {
     gapToLeader: (car.finished ? car.finishTime : t) - leaderTime,
     laps: Math.max(0, Math.floor(car.progress)),
     pitStops: car.stops,
+    bestLapTime: car.bestLapTime,
   }));
 
-  return { seed, trackId: track.id, laps, frames, events, classification };
+  return {
+    seed,
+    trackId: track.id,
+    laps,
+    frames,
+    events,
+    classification,
+    fastestLap,
+  };
 }

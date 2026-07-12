@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { formatLap } from "@/components/paddock/Qualifying";
 import {
   COMPOUNDS,
   type Entrant,
@@ -180,6 +181,18 @@ export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
       };
     });
   }, [result.frames, raceTime, byId]);
+
+  // Who holds the purple AT THIS MOMENT. Not the final fastest lap — the one
+  // standing when the race is at `raceTime`, so it changes hands on screen.
+  const fastestNow = useMemo(() => {
+    let held: { carId: string; lapTime: number } | null = null;
+    for (const e of result.events) {
+      if (e.type === "fastestLap" && e.t <= raceTime) {
+        held = { carId: e.carId, lapTime: e.lapTime };
+      }
+    }
+    return held;
+  }, [result.events, raceTime]);
 
   // The most recent few events, as a commentary ticker.
   const ticker = useMemo(
@@ -406,6 +419,30 @@ export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
                 {c.position}
               </span>
               <span className="flex-1 truncate font-body text-primary">{c.name}</span>
+              {/* The purple. Held live, so it changes hands as you watch. */}
+              {fastestNow?.carId === c.id ? (
+                <span
+                  title={`Fastest lap ${formatLap(fastestNow.lapTime)}`}
+                  className="border border-info px-1 text-[9px] leading-tight tracking-wider text-info"
+                >
+                  FL
+                </span>
+              ) : null}
+              {/* Live gap to the leader — the number everyone actually watches. */}
+              <span
+                data-tabular
+                className={`w-12 text-right tabular-nums ${
+                  c.position === 1 ? "text-secondary" : "text-muted"
+                }`}
+              >
+                {c.finished
+                  ? c.position === 1
+                    ? "WIN"
+                    : `+${c.gapToLeader.toFixed(1)}`
+                  : c.position === 1
+                    ? "LEADER"
+                    : `+${c.gapToLeader.toFixed(1)}`}
+              </span>
               {c.finished ? (
                 <span className="text-[10px] tracking-wider text-success uppercase">
                   Fin

@@ -77,13 +77,30 @@ describe("QuickRace — the pit wall", () => {
     expect(screen.getByText(/bring it home/i)).toBeInTheDocument();
   });
 
-  it("goes racing when the player commits", async () => {
+  it("runs qualifying before the race, and shows every driver's lap", async () => {
     const user = userEvent.setup();
     render(<QuickRace drivers={DRIVERS} />);
     await user.click(screen.getByRole("button", { name: /lights out/i }));
 
-    // The grid came from qualifying, so the player has a real starting slot.
+    // The shootout was always in the sim; now the player sees it. Eight laps,
+    // one of them pole, and a gap for everyone else.
+    expect(screen.getByText(/qualifying/i)).toBeInTheDocument();
+    expect(screen.getByText("POLE")).toBeInTheDocument();
+    // Lap times, as M:SS.mmm.
+    expect(screen.getAllByText(/^\d:\d\d\.\d\d\d$/)).toHaveLength(8);
+    // Gaps to pole for the other seven.
+    expect(screen.getAllByText(/^\+\d+\.\d\d\d$/)).toHaveLength(7);
+  });
+
+  it("goes racing from the grid", async () => {
+    const user = userEvent.setup();
+    render(<QuickRace drivers={DRIVERS} />);
+    await user.click(screen.getByRole("button", { name: /lights out/i }));
+    await user.click(screen.getByRole("button", { name: /to the grid/i }));
+
     expect(screen.getByText(/qualified/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /new race/i })).toBeInTheDocument();
+    // The timing tower is live.
+    expect(screen.getByText(/^LEADER$/)).toBeInTheDocument();
   });
 });
