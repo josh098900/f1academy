@@ -194,6 +194,18 @@ export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
     return held;
   }, [result.events, raceTime]);
 
+  // Is the field neutralised at this moment of the replay?
+  const safetyCarNow = useMemo(() => {
+    const frames = result.frames;
+    if (frames.length === 0) return false;
+    const dt = frames.length > 1 ? frames[1].t - frames[0].t : 0.5;
+    const idx = Math.min(
+      frames.length - 1,
+      Math.max(0, Math.floor(raceTime / dt))
+    );
+    return frames[idx].safetyCar;
+  }, [result.frames, raceTime]);
+
   // The most recent few events, as a commentary ticker.
   const ticker = useMemo(
     () =>
@@ -217,6 +229,15 @@ export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
 
   const leaderLap = live ? Math.max(...live.map((c) => c.lap)) : 0;
   const order = live ? [...live].sort((a, b) => a.position - b.position) : [];
+
+  // The safety car itself: a flashing yellow circle just up the road from
+  // whoever leads the cars still racing, with the queue forming behind it.
+  const scFront =
+    safetyCarNow && live
+      ? ([...live]
+          .filter((c) => !c.finished && !c.retired && !c.inPit)
+          .sort((a, b) => a.position - b.position)[0] ?? null)
+      : null;
 
   return (
     <div className="grid gap-px lg:grid-cols-[1fr_320px]">
@@ -338,9 +359,47 @@ export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
                       </g>
                     );
                   })}
+
+              {/* The safety car — the yellow flashing circle. */}
+              {scFront &&
+                (() => {
+                  const p =
+                    samples[
+                      Math.floor(((scFront.lapPosition + 0.035) % 1) * PATH_SAMPLES) %
+                        PATH_SAMPLES
+                    ];
+                  return (
+                    <g className="animate-pulse">
+                      <circle
+                        cx={p.x}
+                        cy={p.y}
+                        r={10}
+                        fill="#ffd500"
+                        stroke="#0a0a0a"
+                        strokeWidth={2}
+                      />
+                      <text
+                        x={p.x}
+                        y={p.y + 3}
+                        textAnchor="middle"
+                        fontSize={8}
+                        fontWeight="bold"
+                        fill="#0a0a0a"
+                      >
+                        SC
+                      </text>
+                    </g>
+                  );
+                })()}
             </>
           )}
         </svg>
+
+        {safetyCarNow && (
+          <div className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 animate-pulse border border-warning/60 bg-warning/10 px-3 py-1 font-display text-xs tracking-[0.3em] text-warning uppercase">
+            Safety car
+          </div>
+        )}
 
         {/* Controls */}
         <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border-default pt-3">
@@ -518,6 +577,17 @@ export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
                         ? `is out — into the barrier at ${e.zone}`
                         : "is out — the car has let her down"}
                     </>
+                  ) : e.type === "safetyCar" ? (
+                    e.phase === "deployed" ? (
+                      <span className="text-warning">Safety car deployed</span>
+                    ) : e.phase === "ending" ? (
+                      <>Safety car in this lap</>
+                    ) : (
+                      <>
+                        <span className="text-success">Green flag</span> — racing
+                        resumes
+                      </>
+                    )
                   ) : e.type === "fastestLap" ? (
                     <>
                       <span className="text-info">{nameOf(e.carId)}</span> takes the fastest

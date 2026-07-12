@@ -92,6 +92,8 @@ export type CarFrame = {
 
 export type Frame = {
   t: number; // race time, seconds
+  // The field is neutralised: yellow flags, a queue behind the safety car.
+  safetyCar: boolean;
   cars: CarFrame[];
 };
 
@@ -116,6 +118,8 @@ export type RaceEvent =
   | { t: number; lap: number; type: "defended"; carId: string; byCarId: string; zone: string }
   | { t: number; lap: number; type: "pit"; carId: string; to: CompoundId; duration: number }
   | { t: number; lap: number; type: "cliff"; carId: string } // tyres fell off the shelf
+  // deployed → the field is neutralised; ending → last SC lap; green → racing.
+  | { t: number; lap: number; type: "safetyCar"; phase: "deployed" | "ending" | "green" }
   | { t: number; lap: number; type: "finish"; carId: string; position: number };
 
 export type Classification = {
