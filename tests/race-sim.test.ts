@@ -241,6 +241,72 @@ describe("simulateRace — the race actually happens", () => {
   });
 });
 
+describe("simulateRace — the pit lane is not the racing line", () => {
+  it("never lets a car in the pits block a car on track", () => {
+    // Josh spotted cars stopping dead on the start/finish line mid-race. A
+    // pitting car's progress freezes at the line, but it was still in the
+    // running order — so the blocking logic treated it as a stationary obstacle
+    // ON TRACK and queued whole trains of cars up behind a rival who was
+    // actually sitting in the pit box. Visible on screen, and quietly wrecking
+    // every result.
+    for (let seed = 0; seed < 10; seed++) {
+      const r = race(grid(), seed * 71 + 5);
+      for (let f = 1; f < r.frames.length; f++) {
+        const prev = r.frames[f - 1];
+        const cur = r.frames[f];
+        if (!cur.cars.some((c) => c.inPit)) continue;
+        for (let i = 0; i < cur.cars.length; i++) {
+          const before = prev.cars[i];
+          const after = cur.cars[i];
+          if (after.inPit || after.finished) continue;
+          const moved =
+            after.lap + after.lapPosition - (before.lap + before.lapPosition);
+          // A car on track always makes progress. Zero movement means it is
+          // stuck behind something that isn't there.
+          expect(moved).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+});
+
+describe("simulateRace — leading must not be a penalty", () => {
+  it("lets the car in front push to DEFEND, not just to chase", () => {
+    // The leader has nobody ahead, so a mode rule that only pushes when chasing
+    // left it permanently in neutral/conserve while the entire field behind
+    // pushed — up to 0.9s a lap slower than everyone chasing it. The polesitter
+    // got swallowed and finished LAST, and pole was worth less than random.
+    const r = race(grid(), 13, "zandvoort");
+    let leaderPush = 0;
+    let leaderTicks = 0;
+    for (const f of r.frames) {
+      const leader = f.cars.find((c) => c.position === 1);
+      if (!leader || leader.inPit || leader.finished) continue;
+      leaderTicks++;
+      if (leader.mode === "push") leaderPush++;
+    }
+    expect(leaderTicks).toBeGreaterThan(0);
+    expect(leaderPush / leaderTicks).toBeGreaterThan(0.1);
+  });
+
+  it("makes pole worth MORE than a random grid slot", () => {
+    // The headline sanity check on the whole race model. On a circuit where
+    // passing is hard, starting first must be a real advantage — if this ever
+    // drops back to ~12.5% (one-in-eight, i.e. chance), leading has silently
+    // become a punishment again.
+    let poleWins = 0;
+    const runs = 40;
+    for (let s = 0; s < runs; s++) {
+      const seed = s * 7919 + 13;
+      const track = getTrack("zandvoort");
+      const order = gridFromQualifying(grid(), track, seed);
+      const r = simulateRace({ track, laps: LAPS, entrants: order, seed });
+      if (r.classification[0].id === order[0].id) poleWins++;
+    }
+    expect(poleWins / runs).toBeGreaterThan(0.3);
+  });
+});
+
 describe("simulateRace — stats and strategy decide races", () => {
   // Balance regressions. These pin the PROPERTIES that make this a game rather
   // than a dice roll, measured over many seeds. They are deliberately loose —
