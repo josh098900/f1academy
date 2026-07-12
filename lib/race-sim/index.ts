@@ -95,7 +95,15 @@ export const DEFAULT_TUNING: Tuning = {
 
   baseCrewTime: 2.5,
   crewTimeSaving: 1.2,
-  maxStops: 2,
+  // A Strategy describes ONE stop: start on X, box at Y% wear, finish on Z.
+  // It was 2, which meant the single pitAtWear threshold fired again on the
+  // second stint — fit softs at the stop and the same rule boxed you AGAIN four
+  // laps later, refitting softs, while the whole field stopped once. Worse, the
+  // pit wall had drawn a one-stop race, so the screen was lying about the plan
+  // the player had just committed to. The sim now runs the plan it was given;
+  // if the tyre you finish on dies, you finish on a dead tyre. Multi-stop plans
+  // need a Strategy that can express them, and a stint plan that can draw them.
+  maxStops: 1,
 };
 
 // --- Internal per-car state ------------------------------------------------
