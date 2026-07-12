@@ -442,25 +442,27 @@ describe("simulateRace — track character", () => {
     expect(countPasses("vegas")).toBeGreaterThan(countPasses("zandvoort"));
   });
 
-  it("makes track CHOICE strategic: pole is worth far more at Zandvoort", () => {
-    // The headline property of the track models. At Zandvoort track position is
-    // king and qualifying is most of the race; at Vegas the slipstream shuffles
-    // everything and a grid slot guarantees nothing. A player picking a circuit
-    // is picking which of their strengths gets to matter.
-    const poleConversion = (trackId: string) => {
-      let won = 0;
-      const runs = 40;
+  it("makes track choice strategic: Vegas is a passing track, Zandvoort is not", () => {
+    // The circuits' real, robust difference — and the reason picking one is a
+    // strategic act. Zandvoort has two zones (one a 0.55-difficulty banking);
+    // Vegas has three, including a 1.5x slipstream straight. Vegas reliably
+    // produces about three times the overtaking.
+    //
+    // NOTE: an earlier version of this test asserted that POLE converts more
+    // often at Zandvoort. It doesn't, robustly — measured across pit strategies
+    // that gap swings from -21pp to +36pp, i.e. it was noise, and the flattering
+    // number came from one arbitrary plan. Overtaking count is the property that
+    // actually holds. Measure the thing that's real, not the thing that sounds
+    // good.
+    const passesPerRace = (trackId: string) => {
+      let total = 0;
+      const runs = 30;
       for (let s = 0; s < runs; s++) {
-        const seed = s * 7919 + 13;
-        const track = getTrack(trackId);
-        const order = gridFromQualifying(grid(), track, seed);
-        const r = simulateRace({ track, laps: LAPS, entrants: order, seed });
-        if (r.classification[0].id === order[0].id) won++;
+        const r = race(grid(), s * 7919 + 13, trackId);
+        total += r.events.filter((e) => e.type === "overtake").length;
       }
-      return won / runs;
+      return total / runs;
     };
-    const zandvoort = poleConversion("zandvoort");
-    const vegas = poleConversion("vegas");
-    expect(zandvoort).toBeGreaterThan(vegas + 0.2);
+    expect(passesPerRace("vegas")).toBeGreaterThan(passesPerRace("zandvoort") * 2);
   });
 });

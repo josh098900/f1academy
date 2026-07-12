@@ -8,18 +8,16 @@ import {
   type RaceResult,
   getRacingLine,
   getTrack,
-  simulateRace,
 } from "@/lib/race-sim";
 
 // The broadcast. Dots lapping a circuit, a timing tower, and a ticker.
 //
-// Note what is NOT passed in: the race itself. The server sends only the
-// entrants and the seed, and this component recomputes the whole race in the
-// browser. The sim is deterministic, so that produces exactly the race the
-// server would have produced — which is the entire reason for the design. A
-// 15-lap timeline is ~3,500 frames × 8 cars; shipping that over the wire would
-// be megabytes, and it would be a result we'd then have to trust the client not
-// to edit. Sending 8 stat blocks and an integer is better on every axis.
+// Pure presentation: it is handed a finished RaceResult and plays it back. The
+// race is computed by the caller — in the browser, from entrants and a seed,
+// because the sim is deterministic. That is the whole point of the design: a
+// 15-lap timeline is ~3,700 frames × 8 cars (megabytes), and a result shipped
+// from a server is a result you must then trust the client not to edit. Eight
+// stat blocks and an integer beat that on every axis.
 
 const SPEEDS = [1, 5, 20, 60];
 const DEFAULT_SPEED = 20;
@@ -28,10 +26,12 @@ const PIT_HALF_SPAN = 0.055; // how much of the lap the pit lane runs alongside
 const PIT_OFFSET = 30; // how far off the racing line the lane sits, in svg units
 
 type Props = {
+  result: RaceResult;
   entrants: Entrant[];
   trackId: string;
-  laps: number;
-  seed: number;
+  // Fired once when the replay reaches the flag, so the caller can reveal the
+  // result rather than spoiling it beside the race.
+  onFinish?: () => void;
 };
 
 type Point = { x: number; y: number };
@@ -80,16 +80,10 @@ function pointOn(points: Point[], t: number): Point {
   return points[i];
 }
 
-export function RaceViewer({ entrants, trackId, laps, seed }: Props) {
+export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
   const line = getRacingLine(trackId);
   const track = getTrack(trackId);
-
-  // Recompute the race from the seed. Memoised on the inputs, so scrubbing and
-  // re-renders are free.
-  const result: RaceResult = useMemo(
-    () => simulateRace({ track, laps, entrants, seed }),
-    [track, laps, entrants, seed]
-  );
+  const laps = result.laps;
 
   const pathRef = useRef<SVGPathElement>(null);
   const [samples, setSamples] = useState<Point[] | null>(null);
@@ -118,6 +112,14 @@ export function RaceViewer({ entrants, trackId, laps, seed }: Props) {
   const [playing, setPlaying] = useState(true);
 
   const duration = result.frames.at(-1)?.t ?? 0;
+
+  const finished = useRef(false);
+  useEffect(() => {
+    if (raceTime >= duration && duration > 0 && !finished.current) {
+      finished.current = true;
+      onFinish?.();
+    }
+  }, [raceTime, duration, onFinish]);
 
   useEffect(() => {
     if (!playing) return;
@@ -363,6 +365,16 @@ export function RaceViewer({ entrants, trackId, laps, seed }: Props) {
             aria-label="Scrub race"
             className="ml-auto h-1 w-32 accent-[#ff2d92]"
           />
+          <button
+            type="button"
+            onClick={() => {
+              setPlaying(false);
+              setRaceTime(duration);
+            }}
+            className="h-8 border border-border-default px-2.5 font-mono text-xs text-secondary transition-colors hover:text-primary"
+          >
+            Skip
+          </button>
         </div>
       </div>
 

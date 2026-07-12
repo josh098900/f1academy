@@ -30,6 +30,8 @@ export { TRACKS, TRACK_IDS, getTrack } from "./tracks";
 export { RACING_LINES, RACEABLE_TRACKS, getRacingLine } from "./racing-lines";
 export type { RacingLine } from "./racing-lines";
 export { deriveDriverStats, NEUTRAL } from "./derive";
+export { buildRaceReport } from "./report";
+export type { RaceReport } from "./report";
 export type { DriverForm } from "./derive";
 export { Rng } from "./rng";
 
@@ -177,38 +179,34 @@ function decideMode(
   return "neutral";
 }
 
-// Box when the plan says so — AND only when the stop can pay for itself.
+// Box when the plan says so.
 //
-// Two rules, and both matter:
+// The player's pitAtWear is the trigger and it is OBEYED. There is deliberately
+// no safety net around it in either direction: box too late and you will run on
+// dead tyres past the cliff; box too early and you will throw away track
+// position for fresh rubber you didn't need. Both are real mistakes, both are
+// learnable, and a sim that quietly overrode either would be lying to the
+// player about what their own slider does.
 //
-// 1. The player's pitAtWear is the trigger. There is deliberately no safety net
-//    around it: set it past the compound's cliff and you WILL run on dead
-//    tyres. Writing a bad rule has to hurt, or strategy isn't a skill. It can't
-//    spiral into farce, because wear caps at 1.0 and so does the penalty.
+// (An earlier version refused any stop that couldn't repay its ~15s in pure lap
+// time. It meant a player who asked to box at 42% wear was ignored until 70% —
+// a control that did nothing. Worse, it outlawed the undercut, which is a real
+// strategy: track position is worth something the lap-time maths can't see.)
 //
-// 2. But a stop must still be worth making. A pit costs ~22s; fresh rubber only
-//    pays that back if there are enough laps left to claw it in. Without this
-//    gate the sim cheerfully pitted cars on lap 14 of 15 — a guaranteed 22s
-//    loss for a one-lap benefit — which quantised the whole field into 22s
-//    bands and was the real reason "identical" cars finished a minute apart.
-//    A strategist would never do it, so neither does the sim. Note this also
-//    permits a genuine rescue stop: once a tyre is truly destroyed it's losing
-//    ~6s a lap, and then even a late stop pays.
+// The ONE thing still blocked is the genuinely absurd: a stop with almost no
+// race left to run it in. Boxing on lap 14 of 15 is a guaranteed loss with no
+// upside available, and the stateless rule used to do exactly that — which
+// quantised the whole field into pit-stop-sized bands.
+const MIN_LAPS_TO_JUSTIFY_A_STOP = 3;
+
 function shouldPit(
   state: CarState,
   tune: Tuning,
-  track: Track,
   lapsRemaining: number
 ): boolean {
   if (state.stops >= tune.maxStops || state.finished) return false;
-  if (state.wear < state.entrant.strategy.pitAtWear) return false;
-  if (lapsRemaining <= 0) return false;
-
-  const nowPerLap = tyreLapDelta(COMPOUNDS[state.compound], state.wear);
-  const freshPerLap = tyreLapDelta(COMPOUNDS[state.entrant.strategy.pitCompound], 0);
-  const savedPerLap = nowPerLap - freshPerLap;
-  const cost = track.pitLoss + crewTime(state, tune);
-  return savedPerLap * lapsRemaining > cost;
+  if (lapsRemaining < MIN_LAPS_TO_JUSTIFY_A_STOP) return false;
+  return state.wear >= state.entrant.strategy.pitAtWear;
 }
 
 function crewTime(state: CarState, tune: Tuning): number {
@@ -548,7 +546,7 @@ export function simulateRace(input: RaceInput): RaceResult {
         // clean air never did — which manufactured a 50s spread between
         // IDENTICAL cars and made pole worth 75% of the race. A whole class of
         // apparent "balance problems" was really just this bug.
-        if (shouldPit(car, tune, track, laps - lapNow)) {
+        if (shouldPit(car, tune, laps - lapNow)) {
           const duration = track.pitLoss + crewTime(car, tune);
           car.pitTimer = duration;
           car.pitDuration = duration;
