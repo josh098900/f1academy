@@ -207,8 +207,12 @@ describe("simulateRace — the race actually happens", () => {
       for (let i = 1; i < finishes.length; i++) {
         expect(finishes[i].t).toBeGreaterThanOrEqual(finishes[i - 1].t);
       }
-      // …and that order IS the classification.
-      expect(r.classification.map((c) => c.id)).toEqual(finishes.map((f) => f.id));
+      // …and that order IS the classification, among those who took the flag.
+      // (A retirement is classified behind every finisher, and never gets one.)
+      const finishers = r.classification
+        .filter((c) => c.retired === null)
+        .map((c) => c.id);
+      expect(finishers).toEqual(finishes.map((f) => f.id));
     }
   });
 
@@ -290,6 +294,116 @@ describe("simulateRace — the timing screen", () => {
   });
 });
 
+describe("simulateRace — things go wrong", () => {
+  const RECKLESS = strategy({
+    startCompound: "soft",
+    pitCompound: "soft",
+    pitAtWear: 0.95, // lives past the cliff
+    attackWithin: 2.5, // always pushing
+    conserveWhenLeadingBy: 8,
+  });
+
+  function retirementRate(plan: Strategy, seeds = 200): number {
+    let out = 0;
+    for (let s = 0; s < seeds; s++) {
+      const field = grid();
+      field[0] = { ...field[0], id: "hero", name: "hero", strategy: plan };
+      const r = race(field, s * 7919 + 13, "silverstone");
+      if (r.events.some((e) => e.type === "retirement" && e.carId === "hero")) {
+        out++;
+      }
+    }
+    return out / seeds;
+  }
+
+  it("makes an incident something you EARNED, not something that happened to you", () => {
+    // THE test for this whole system. A race lost to pure luck teaches nothing
+    // and the player stops playing; a race lost to running dead tyres teaches
+    // everything. So a sensible plan must almost never end in the barrier, and a
+    // reckless one must do it several times as often.
+    const sensible = retirementRate(strategy());
+    const reckless = retirementRate(RECKLESS);
+
+    expect(sensible).toBeLessThan(0.08); // rare enough not to feel arbitrary
+    expect(reckless).toBeGreaterThan(sensible * 2.5); // and clearly your own doing
+  });
+
+  it("gives the tyre cliff teeth: past it, you can lose the race, not just seconds", () => {
+    // Before incidents, running past the cliff only cost time. A dead tyre has
+    // no grip under braking, which is exactly how a driver locks a wheel and
+    // ends up in the gravel — so the cliff should now be able to END a race.
+    let crashesAfterCliff = 0;
+    for (let s = 0; s < 200; s++) {
+      const field = grid();
+      field[0] = { ...field[0], id: "hero", name: "hero", strategy: RECKLESS };
+      const r = race(field, s * 31 + 5, "silverstone");
+      const cliff = r.events.find((e) => e.type === "cliff" && e.carId === "hero");
+      const crash = r.events.find(
+        (e) => e.type === "retirement" && e.carId === "hero" && e.cause === "crash"
+      );
+      if (cliff && crash && crash.lap >= cliff.lap) crashesAfterCliff++;
+    }
+    expect(crashesAfterCliff).toBeGreaterThan(0);
+  });
+
+  it("puts every incident at a real braking zone", () => {
+    const zones = new Set(getTrack("silverstone").zones.map((z) => z.name));
+    for (let s = 0; s < 30; s++) {
+      const r = race(grid(), s * 17 + 3, "silverstone");
+      for (const e of r.events) {
+        if (e.type === "lockup") expect(zones.has(e.zone)).toBe(true);
+        if (e.type === "retirement" && e.cause === "crash") {
+          expect(zones.has(e.zone!)).toBe(true);
+        }
+        // A car doesn't crash into a corner because its gearbox broke.
+        if (e.type === "retirement" && e.cause === "mechanical") {
+          expect(e.zone).toBeNull();
+        }
+      }
+    }
+  });
+
+  it("takes a retired car off the track and classifies her behind the finishers", () => {
+    for (let s = 0; s < 60; s++) {
+      const r = race(grid(), s * 41 + 11, "silverstone");
+      const dnfs = r.classification.filter((c) => c.retired !== null);
+      if (dnfs.length === 0) continue;
+
+      // Classified behind everyone who took the flag.
+      const lastFinisher = Math.max(
+        ...r.classification.filter((c) => c.retired === null).map((c) => c.position)
+      );
+      for (const d of dnfs) expect(d.position).toBeGreaterThan(lastFinisher);
+
+      // And she stops moving the moment she's out.
+      for (const id of dnfs.map((d) => d.id)) {
+        let sawRetired = false;
+        let frozenAt: number | null = null;
+        for (const f of r.frames) {
+          const c = f.cars.find((x) => x.id === id)!;
+          if (!c.retired) continue;
+          sawRetired = true;
+          const total = c.lap + c.lapPosition;
+          if (frozenAt === null) frozenAt = total;
+          else expect(total).toBeCloseTo(frozenAt, 6);
+        }
+        expect(sawRetired).toBe(true);
+      }
+      return; // one race with a DNF is enough
+    }
+  });
+
+  it("still finishes the race when cars retire", () => {
+    for (let s = 0; s < 40; s++) {
+      const r = race(grid(), s * 13 + 7, "silverstone");
+      // Everyone either took the flag or is out. Nobody is left circulating.
+      for (const c of r.classification) {
+        expect(c.retired !== null || c.laps === LAPS).toBe(true);
+      }
+    }
+  });
+});
+
 describe("simulateRace — the pit lane is not the racing line", () => {
   it("never lets a car in the pits block a car on track", () => {
     // Josh spotted cars stopping dead on the start/finish line mid-race. A
@@ -307,7 +421,8 @@ describe("simulateRace — the pit lane is not the racing line", () => {
         for (let i = 0; i < cur.cars.length; i++) {
           const before = prev.cars[i];
           const after = cur.cars[i];
-          if (after.inPit || after.finished) continue;
+          // In the pits, out of the race, or already home: not on the racing line.
+          if (after.inPit || after.finished || after.retired) continue;
           const moved =
             after.lap + after.lapPosition - (before.lap + before.lapPosition);
           // A car on track always makes progress. Zero movement means it is
