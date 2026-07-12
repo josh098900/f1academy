@@ -276,9 +276,15 @@ export function RaceViewer({ entrants, trackId, laps, seed }: Props) {
               )}
 
               {/* The cars. Slowest-first so the leader draws on top. A car in
-                  the pits is drawn on the LANE, not frozen on the racing line. */}
+                  the pits is drawn on the LANE, not frozen on the racing line.
+                  A car that has FINISHED is drawn nowhere: its progress stops at
+                  exactly lap 15.0, and 15.0 % 1 === 0 is the start/finish line,
+                  so finishers would otherwise pile up on top of the flag —
+                  which is precisely what they were doing. Once you take the
+                  chequered flag you are off the circuit; the tower has you. */}
               {live &&
                 [...live]
+                  .filter((c) => !c.finished)
                   .sort((a, b) => b.position - a.position)
                   .map((c) => {
                     const inPit = c.inPit && c.pitProgress !== null && pitLane;
@@ -380,26 +386,34 @@ export function RaceViewer({ entrants, trackId, laps, seed }: Props) {
                 {c.position}
               </span>
               <span className="flex-1 truncate font-body text-primary">{c.name}</span>
-              <span
-                title={COMPOUNDS[c.compound].label}
-                className={`text-[10px] ${
-                  c.compound === "soft"
-                    ? "text-danger"
-                    : c.compound === "medium"
-                      ? "text-warning"
-                      : "text-info"
-                }`}
-              >
-                {COMPOUNDS[c.compound].label[0]}
-              </span>
-              {/* Tyre life — the bar empties as the tyre dies. */}
-              <span className="h-1 w-8 bg-border-default">
-                <span
-                  className="block h-1 bg-secondary"
-                  style={{ width: `${Math.max(0, 100 - c.wear * 100)}%` }}
-                />
-              </span>
-              {c.inPit ? <span className="text-[10px] text-accent">PIT</span> : null}
+              {c.finished ? (
+                <span className="text-[10px] tracking-wider text-success uppercase">
+                  Fin
+                </span>
+              ) : (
+                <>
+                  <span
+                    title={COMPOUNDS[c.compound].label}
+                    className={`text-[10px] ${
+                      c.compound === "soft"
+                        ? "text-danger"
+                        : c.compound === "medium"
+                          ? "text-warning"
+                          : "text-info"
+                    }`}
+                  >
+                    {COMPOUNDS[c.compound].label[0]}
+                  </span>
+                  {/* Tyre life — the bar empties as the tyre dies. */}
+                  <span className="h-1 w-8 bg-border-default">
+                    <span
+                      className="block h-1 bg-secondary"
+                      style={{ width: `${Math.max(0, 100 - c.wear * 100)}%` }}
+                    />
+                  </span>
+                  {c.inPit ? <span className="text-[10px] text-accent">PIT</span> : null}
+                </>
+              )}
             </li>
           ))}
         </ol>
