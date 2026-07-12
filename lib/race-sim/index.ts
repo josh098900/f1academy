@@ -78,13 +78,13 @@ export const DEFAULT_TUNING: Tuning = {
   qualiSigmaMult: 1.25,
 
   dirtyAirWindow: 1.0,
-  dirtyAirPenalty: 0.06,
+  dirtyAirPenalty: 0.25,
   overtakeWindow: 0.8,
   failedPassCost: 0.15,
   carLengthSeconds: 0.18,
 
-  basePassChance: 0.32,
-  wPace: 0.9,
+  basePassChance: 0.2,
+  wPace: 0.6,
   wRacecraft: 0.35,
   wTyre: 0.15,
   wPower: 0.2,
@@ -153,13 +153,26 @@ function lapTimeFor(
 
 // Execute the player's pre-committed rules. This is the whole of "management":
 // they wrote the rules before the lights, and the car follows them literally.
+//
+// A car races hard when it is racing SOMEONE — whether that's the car in front
+// or the one filling its mirrors. An earlier version only pushed when chasing,
+// which meant the leader, having nobody ahead, never pushed at all, and then
+// CONSERVED once it had a gap. Push is -0.4s a lap and conserve is +0.5s, so the
+// car in front ran up to 0.9s a lap slower than the entire field behind it:
+// leading was a penalty, the polesitter got swallowed and routinely finished
+// last, and pole was worth less than random chance. Drivers defend, not just
+// attack.
 function decideMode(
   state: CarState,
   gapAhead: number,
   gapBehind: number
 ): PaceMode {
   const { attackWithin, conserveWhenLeadingBy } = state.entrant.strategy;
+  // Someone in reach ahead — go and get them.
   if (gapAhead <= attackWithin) return "push";
+  // Someone filling the mirrors — defend. The leader can do this too.
+  if (gapBehind <= attackWithin) return "push";
+  // Nobody near: back off and look after the tyres.
   if (gapBehind >= conserveWhenLeadingBy) return "conserve";
   return "neutral";
 }
@@ -350,12 +363,23 @@ export function simulateRace(input: RaceInput): RaceResult {
       if (car.pitTimer > 0) car.pitTimer = Math.max(0, car.pitTimer - DT);
     }
 
+    // A car in the pit lane, or one that has taken the flag, is NOT ON THE
+    // RACING LINE. Everything below — pace decisions, dirty air, blocking,
+    // overtakes — must therefore run against the cars actually out there.
+    //
+    // This was a real bug and a nasty one: a pitting car's progress freezes at
+    // the start/finish line, but it stayed in the running order, so the blocking
+    // logic treated it as a stationary obstacle ON TRACK. Whole trains of cars
+    // stopped dead on the straight, nose-to-tail, queueing behind a rival who
+    // was in the pit box. It was visible on screen as cars parked on the flag,
+    // and it was quietly distorting every race result.
+    const onTrack = running.filter((c) => !c.finished && c.pitTimer === 0);
+
     // 2. Choose pace mode from each car's own pre-committed rules.
-    for (let i = 0; i < running.length; i++) {
-      const car = running[i];
-      if (car.finished || car.pitTimer > 0) continue;
-      const ahead = running[i - 1];
-      const behind = running[i + 1];
+    for (let i = 0; i < onTrack.length; i++) {
+      const car = onTrack[i];
+      const ahead = onTrack[i - 1];
+      const behind = onTrack[i + 1];
       const lap = lapTimeFor(car, track, false, tune);
       const gapAhead = ahead
         ? Math.max(0, (ahead.progress - car.progress) * lap)
@@ -372,19 +396,20 @@ export function simulateRace(input: RaceInput): RaceResult {
     const proposed = new Map<CarState, number>();
     const lapTimes = new Map<CarState, number>();
 
-    for (let i = 0; i < running.length; i++) {
-      const car = running[i];
+    for (const car of cars) {
       if (car.finished) {
         proposed.set(car, car.progress);
         continue;
       }
       if (car.pitTimer > 0) {
-        proposed.set(car, car.progress); // stationary
+        proposed.set(car, car.progress); // stationary in the box
         lapTimes.set(car, lapTimeFor(car, track, false, tune));
-        continue;
       }
+    }
 
-      const ahead = running[i - 1];
+    for (let i = 0; i < onTrack.length; i++) {
+      const car = onTrack[i];
+      const ahead = onTrack[i - 1];
       const roughLap = lapTimeFor(car, track, false, tune);
       const gapAhead = ahead
         ? (ahead.progress - car.progress) * roughLap
@@ -396,11 +421,10 @@ export function simulateRace(input: RaceInput): RaceResult {
       proposed.set(car, car.progress + DT / lap);
     }
 
-    // 4. Blocking + overtakes, in track order.
-    for (let i = 1; i < running.length; i++) {
-      const car = running[i];
-      const ahead = running[i - 1];
-      if (car.finished || car.pitTimer > 0 || ahead.finished) continue;
+    // 4. Blocking + overtakes, among the cars actually on the racing line.
+    for (let i = 1; i < onTrack.length; i++) {
+      const car = onTrack[i];
+      const ahead = onTrack[i - 1];
 
       const carNext = proposed.get(car)!;
       const aheadNext = proposed.get(ahead)!;
@@ -416,7 +440,7 @@ export function simulateRace(input: RaceInput): RaceResult {
         crossedPosition(car.progress, carNext, z.position)
       );
 
-      if (zone && gapNow <= tune.overtakeWindow && ahead.pitTimer === 0) {
+      if (zone && gapNow <= tune.overtakeWindow) {
         const p = passProbability(
           car,
           ahead,
