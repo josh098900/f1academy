@@ -148,6 +148,25 @@ export function buildRaceReport(input: {
     }
   }
 
+  // The safety-car stop — the cheapest track position in racing, and worth
+  // saying so whichever side of it the player ended up on.
+  const myStop = myPits[0];
+  const winnerStop = winnerPits[0];
+  if (myStop?.type === "pit" && myStop.underSC) {
+    notes.push(
+      `You boxed under the safety car on lap ${myStop.lap} — a stop that costs ~15 seconds at racing speed cost you almost nothing while the field trundled.`
+    );
+  } else if (
+    !won &&
+    myPits.length > 0 &&
+    winnerStop?.type === "pit" &&
+    winnerStop.underSC
+  ) {
+    notes.push(
+      `${winner.name} took her stop under the safety car and got it nearly free; yours came at racing speed, full price.`
+    );
+  }
+
   // Moments — a lock-up costs you seconds AND flat-spots the tyre, so it keeps
   // costing after the corner.
   const lockups = result.events.filter(

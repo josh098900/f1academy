@@ -300,10 +300,19 @@ const MIN_LAPS_TO_JUSTIFY_A_STOP = 3;
 function shouldPit(
   state: CarState,
   tune: Tuning,
-  lapsRemaining: number
+  lapsRemaining: number,
+  underSC: boolean
 ): boolean {
   if (state.stops >= tune.maxStops || state.finished) return false;
   if (lapsRemaining < MIN_LAPS_TO_JUSTIFY_A_STOP) return false;
+  // The safety-car stop. The stationary seconds cost the same; the track
+  // position doesn't — the field is trundling at SC pace while you serve
+  // them, so the caution turns a ~16s decision into a cheap one. Obeyed as
+  // literally as pitAtWear is: commit to it and a lap-3 caution WILL spend
+  // your only stop on lap 3, with everything that implies for the tyre you
+  // finish on. Whether that gamble is wise is the player's problem, which is
+  // to say it's the game.
+  if (underSC && state.entrant.strategy.boxUnderSafetyCar) return true;
   return state.wear >= state.entrant.strategy.pitAtWear;
 }
 
@@ -999,7 +1008,7 @@ export function simulateRace(input: RaceInput): RaceResult {
         // clean air never did — which manufactured a 50s spread between
         // IDENTICAL cars and made pole worth 75% of the race. A whole class of
         // apparent "balance problems" was really just this bug.
-        if (shouldPit(car, tune, laps - lapNow)) {
+        if (shouldPit(car, tune, laps - lapNow, underSC)) {
           const duration = track.pitLoss + crewTime(car, tune);
           car.pitTimer = duration;
           car.pitDuration = duration;
@@ -1014,6 +1023,7 @@ export function simulateRace(input: RaceInput): RaceResult {
             carId: car.entrant.id,
             to: car.compound,
             duration,
+            ...(underSC ? { underSC: true } : {}),
           });
         }
       }

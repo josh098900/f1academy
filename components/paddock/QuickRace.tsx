@@ -2,7 +2,12 @@
 
 import { useMemo, useState } from "react";
 
-import { PitWallSlider, StintPlan, TyrePicker } from "@/components/paddock/PitWall";
+import {
+  PitWallSlider,
+  PitWallToggle,
+  StintPlan,
+  TyrePicker,
+} from "@/components/paddock/PitWall";
 import { Qualifying } from "@/components/paddock/Qualifying";
 import { RaceViewer } from "@/components/paddock/RaceViewer";
 import { Button } from "@/components/ui/button";
@@ -42,6 +47,7 @@ const DEFAULT_STRATEGY: Strategy = {
   startCompound: "medium",
   pitCompound: "hard",
   pitAtWear: 0.65,
+  boxUnderSafetyCar: true, // what a real pit wall would do
   attackWithin: 1.0,
   conserveWhenLeadingBy: 3.0,
 };
@@ -51,10 +57,12 @@ const DEFAULT_STRATEGY: Strategy = {
 function npcStrategy(rng: Rng): Strategy {
   const roll = rng.next();
   if (roll < 0.3) {
+    // The opportunist: aggressive tyres, jumps at a cheap stop.
     return {
       startCompound: "soft",
       pitCompound: "medium",
       pitAtWear: 0.58,
+      boxUnderSafetyCar: true,
       attackWithin: 1.3,
       conserveWhenLeadingBy: 2.5,
     };
@@ -64,14 +72,18 @@ function npcStrategy(rng: Rng): Strategy {
       startCompound: "medium",
       pitCompound: "hard",
       pitAtWear: 0.66,
+      boxUnderSafetyCar: true,
       attackWithin: 0.9,
       conserveWhenLeadingBy: 3.0,
     };
   }
+  // The track-position team: hards, run long, and a caution doesn't tempt
+  // them out of the plan.
   return {
     startCompound: "hard",
     pitCompound: "medium",
     pitAtWear: 0.8,
+    boxUnderSafetyCar: false,
     attackWithin: 0.7,
     conserveWhenLeadingBy: 3.5,
   };
@@ -321,6 +333,16 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
                 onChange={(v) =>
                   setStrategy((s) => ({ ...s, conserveWhenLeadingBy: v / 10 }))
                 }
+              />
+              <PitWallToggle
+                label="If the safety car comes out"
+                onLabel="Box for the cheap stop"
+                offLabel="Stay out"
+                value={strategy.boxUnderSafetyCar}
+                onChange={(v) =>
+                  setStrategy((s) => ({ ...s, boxUnderSafetyCar: v }))
+                }
+                hint="A stop under the caution costs a fraction of the usual track position — but it spends your only stop the moment the yellows fly, however early that is."
               />
             </div>
           </div>

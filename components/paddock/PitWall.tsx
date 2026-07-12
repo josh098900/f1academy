@@ -173,6 +173,54 @@ export function PitWallSlider({
   );
 }
 
+// A pre-committed either/or. There are no buttons to press once the lights go
+// out — this is where you decide, in advance, what your car does when the
+// moment comes. Styled in caution yellow because that's the moment it decides.
+export function PitWallToggle({
+  label,
+  hint,
+  onLabel,
+  offLabel,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  onLabel: string; // the choice that maps to true
+  offLabel: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div>
+      <p className="font-mono text-[10px] tracking-[0.2em] text-secondary uppercase">
+        {label}
+      </p>
+      <div className="mt-2.5 flex gap-px">
+        {[
+          { text: onLabel, v: true },
+          { text: offLabel, v: false },
+        ].map(({ text, v }) => (
+          <button
+            key={text}
+            type="button"
+            onClick={() => onChange(v)}
+            aria-pressed={value === v}
+            className={`h-8 border px-3 font-mono text-xs transition-colors ${
+              value === v
+                ? "border-warning bg-warning/10 text-warning"
+                : "border-border-default text-secondary hover:text-primary"
+            }`}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+      <p className="mt-1.5 font-body text-[11px] leading-snug text-muted">{hint}</p>
+    </div>
+  );
+}
+
 // The plan, drawn. This is the whole point of the screen: your sliders become a
 // picture of the race you've just ordered, cliff and all.
 export function StintPlan({
