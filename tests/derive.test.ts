@@ -72,3 +72,35 @@ describe("deriveDriverStats — ratings are read from reality, never invented", 
     }
   });
 });
+
+describe("deriveDriverStats — confidence, not just averages", () => {
+  it("does not let one lucky session outrank a whole season", () => {
+    // This really happened. A wildcard ran a single qualifying, took pole, and
+    // rated PAC 98 — the fastest driver in the game — while the actual
+    // front-runner, whose three sessions read [1, 11, 2], rated 86. The
+    // one-off outranked the season, and the player racing the real
+    // front-runner could not win.
+    const oneLuckyPole = deriveDriverStats(form({ qualifying: [1] }));
+    const realFrontRunner = deriveDriverStats(form({ qualifying: [1, 11, 2] }));
+    expect(realFrontRunner.pace).toBeGreaterThan(oneLuckyPole.pace);
+  });
+
+  it("rates a driver more confidently the more she has raced", () => {
+    // Identical form, different amounts of evidence: the well-observed driver
+    // is rated further from neutral, because we actually know something.
+    const once = deriveDriverStats(form({ qualifying: [2] }));
+    const often = deriveDriverStats(form({ qualifying: [2, 2, 2, 2, 2, 2] }));
+    expect(Math.abs(often.pace - NEUTRAL)).toBeGreaterThan(
+      Math.abs(once.pace - NEUTRAL)
+    );
+    // …and the rating still points the right way.
+    expect(once.pace).toBeGreaterThan(NEUTRAL);
+  });
+
+  it("does not punish a slow driver for having raced a lot", () => {
+    const onceSlow = deriveDriverStats(form({ qualifying: [17] }));
+    const oftenSlow = deriveDriverStats(form({ qualifying: [17, 17, 17, 17, 17, 17] }));
+    expect(oftenSlow.pace).toBeLessThan(onceSlow.pace); // more sure she's slow
+    expect(oftenSlow.pace).toBeGreaterThanOrEqual(30);
+  });
+});

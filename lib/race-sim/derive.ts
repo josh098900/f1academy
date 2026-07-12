@@ -22,6 +22,27 @@ export const NEUTRAL = 55;
 const MIN_RATING = 30;
 const MAX_RATING = 98;
 
+// How many races' worth of "we don't know yet" every driver starts with.
+//
+// Without this, one session counts as much as a full season: a wildcard who ran
+// a single qualifying and took pole rated PAC 98 — the fastest driver in the
+// game — while the actual front-runner, whose three sessions read [1, 11, 2],
+// rated 86. A lucky one-off outranked a whole season's work.
+//
+// So a rating is only as confident as the evidence behind it: a driver's
+// measured form is blended with the neutral prior in proportion to how much
+// we've actually seen. One session is mostly prior; a full season is mostly her.
+// Ratings sharpen on their own as the season runs, which is exactly right.
+const CONFIDENCE_PRIOR = 2;
+
+function shrink(observed: number, samples: number): number {
+  if (samples <= 0) return NEUTRAL;
+  return (
+    (samples * observed + CONFIDENCE_PRIOR * NEUTRAL) /
+    (samples + CONFIDENCE_PRIOR)
+  );
+}
+
 export type DriverForm = {
   // Finishing positions in qualifying, best-first order irrelevant.
   qualifying: number[];
@@ -48,12 +69,15 @@ function mean(xs: number[]): number | null {
 export function deriveDriverStats(form: DriverForm): DriverStats {
   const field = Math.max(2, form.fieldSize);
 
-  // Pace: pole → ~98, last → ~35. Linear in grid slot.
+  // Pace: pole → ~98, last → ~35. Linear in grid slot, then shrunk toward the
+  // prior by how many sessions we've actually seen her run.
   const avgQuali = mean(form.qualifying);
   const pace =
     avgQuali === null
       ? NEUTRAL
-      : clamp(98 - ((avgQuali - 1) / (field - 1)) * 63);
+      : clamp(
+          shrink(98 - ((avgQuali - 1) / (field - 1)) * 63, form.qualifying.length)
+        );
 
   // Racecraft: positions gained, averaged. Gaining 3 places a race is elite;
   // losing 3 is poor. DNFs don't count against racecraft — that's consistency's
@@ -63,7 +87,9 @@ export function deriveDriverStats(form: DriverForm): DriverStats {
     .map((r) => r.gridPosition! - r.position!);
   const avgGained = mean(deltas);
   const racecraft =
-    avgGained === null ? NEUTRAL : clamp(NEUTRAL + avgGained * 9);
+    avgGained === null
+      ? NEUTRAL
+      : clamp(shrink(NEUTRAL + avgGained * 9, deltas.length));
 
   // Consistency: how often she brings it home. A perfect record is not a
   // perfect rating — nobody is unbreakable — and one retirement shouldn't
@@ -71,7 +97,9 @@ export function deriveDriverStats(form: DriverForm): DriverStats {
   const started = form.races.length;
   const finished = form.races.filter((r) => r.classified).length;
   const consistency =
-    started === 0 ? NEUTRAL : clamp(45 + (finished / started) * 48);
+    started === 0
+      ? NEUTRAL
+      : clamp(shrink(45 + (finished / started) * 48, started));
 
   return { pace, racecraft, consistency };
 }
