@@ -101,6 +101,17 @@ export type Tuning = {
   baseCrewTime: number; // stationary seconds before pit-crew upgrades
   crewTimeSaving: number; // a maxed crew saves this much
   maxStops: number;
+
+  // The safety car. Sometimes a car in the barrier brings it out: the field
+  // slows to SC pace, everyone catches the queue at racing speed, and nobody
+  // passes anybody until the green. It is the sport's great equaliser — the
+  // gaps you spent ten laps building evaporate through no fault of yours —
+  // which is exactly why it can't come out for every incident.
+  scDeployChance: number; // a crash brings out the safety car this often
+  scPaceMult: number; // an SC lap is this much slower than a green lap
+  scLaps: number; // leader laps the SC leads before pulling in
+  scQueueGap: number; // seconds between cars trundling in the queue
+  scWearMult: number; // tyres cool under SC — wear accrues at this fraction
 };
 
 export const DEFAULT_TUNING: Tuning = {
@@ -158,6 +169,12 @@ export const DEFAULT_TUNING: Tuning = {
 
   baseCrewTime: 2.5,
   crewTimeSaving: 1.2,
+
+  scDeployChance: 0.6,
+  scPaceMult: 1.35,
+  scLaps: 2,
+  scQueueGap: 0.4,
+  scWearMult: 0.4,
   // A Strategy describes ONE stop: start on X, box at Y% wear, finish on Z.
   // It was 2, which meant the single pitAtWear threshold fired again on the
   // second stint — fit softs at the stop and the same rule boxed you AGAIN four
@@ -477,6 +494,13 @@ export function simulateRace(input: RaceInput): RaceResult {
   let finishedCount = 0;
   let fastestLap: RaceResult["fastestLap"] = null;
 
+  // The safety car. "deployed" → the field is neutralised; "ending" → this is
+  // the last SC lap ("safety car in this lap" on a real pit board); "green" →
+  // racing. It pulls in on a schedule of LEADER laps, so a deployment near the
+  // flag simply never ends and the race finishes under yellow — as in life.
+  let scPhase: "green" | "deployed" | "ending" = "green";
+  let scEndsAfterLap = 0;
+
   // Scratch buffers, allocated once and reused every tick. See the note above
   // simulateRace: a 15-lap race runs ~3,600 ticks, and rebuilding two arrays and
   // two object-keyed Maps on each of them cost ~18,000 allocations per race —
@@ -523,6 +547,31 @@ export function simulateRace(input: RaceInput): RaceResult {
 
   while (t < MAX_RACE_SECONDS && cars.some((c) => !c.finished && !c.retired)) {
     order();
+
+    // Safety-car schedule. The while-condition guarantees a running car
+    // exists, and `running` is race-sorted, so the first one is the leader.
+    if (scPhase !== "green") {
+      const leader = running.find((c) => !c.finished && !c.retired)!;
+      if (scPhase === "deployed" && leader.lapIndex >= scEndsAfterLap - 1) {
+        scPhase = "ending";
+        events.push({
+          t,
+          lap: leader.lapIndex + 1,
+          type: "safetyCar",
+          phase: "ending",
+        });
+      }
+      if (scPhase === "ending" && leader.lapIndex >= scEndsAfterLap) {
+        scPhase = "green";
+        events.push({
+          t,
+          lap: leader.lapIndex + 1,
+          type: "safetyCar",
+          phase: "green",
+        });
+      }
+    }
+    const underSC = scPhase !== "green";
 
     // 1. Serve pit stops. A stationary car makes no progress — which is exactly
     // why the pit loss hurts, and why the crew upgrade is worth buying.
@@ -590,6 +639,12 @@ export function simulateRace(input: RaceInput): RaceResult {
     // push to take P3 or to keep it, not to fend off a car a lap down.
     for (let i = 0; i < onTrack.length; i++) {
       const car = onTrack[i];
+      if (underSC) {
+        // Nobody races the pace car. No attacking, no defending, no burning
+        // tyres — hold station and wait for the green.
+        car.mode = "neutral";
+        continue;
+      }
       const ahead = onTrack[i - 1];
       const behind = onTrack[i + 1];
       const lap = lapTimeFor(car, track, false, tune, laps);
@@ -617,6 +672,7 @@ export function simulateRace(input: RaceInput): RaceResult {
       }
     }
 
+    const scLapTime = track.baseLapTime * tune.scPaceMult;
     for (const car of onTrack) {
       // Dirty air is a wake, and a wake doesn't care what lap the car making
       // it is on — so the gap here is road distance, not race distance.
@@ -625,8 +681,20 @@ export function simulateRace(input: RaceInput): RaceResult {
       const gapAhead = ahead
         ? ((roadPos[ahead.index] - roadPos[car.index] + 1) % 1) * roughLap
         : Infinity;
-      const inDirtyAir = gapAhead <= tune.dirtyAirWindow;
 
+      if (underSC) {
+        // The queue trundles at safety-car pace. A car that hasn't reached it
+        // yet closes at racing speed — that IS the bunching: ten laps of gap
+        // built at three tenths a lap, undone in half a lap of catching up.
+        const catching =
+          car !== roadOrder[head] && gapAhead > tune.scQueueGap * 2;
+        const lap = catching ? roughLap : scLapTime;
+        lapTimes[car.index] = lap;
+        proposed[car.index] = car.progress + DT / lap;
+        continue;
+      }
+
+      const inDirtyAir = gapAhead <= tune.dirtyAirWindow;
       const lap = lapTimeFor(car, track, inDirtyAir, tune, laps);
       lapTimes[car.index] = lap;
       proposed[car.index] = car.progress + DT / lap;
@@ -652,16 +720,24 @@ export function simulateRace(input: RaceInput): RaceResult {
 
       const carNext = proposed[car.index];
       const lap = lapTimes[car.index];
-      const buffer = tune.carLengthSeconds / lap; // in laps
+      // Behind the safety car the queue keeps a courtesy gap, not a racing one.
+      const spacing = underSC
+        ? Math.max(tune.carLengthSeconds, tune.scQueueGap)
+        : tune.carLengthSeconds;
+      const buffer = spacing / lap; // in laps
 
       // Would it end this tick alongside or past the car in front?
       if (carNext < aheadNext - buffer) continue; // clear air, carry on
 
       // It's on the gearbox. Is it at a passing place, and close enough?
+      // (Under the safety car there are no passing places — overtaking is
+      // forbidden, blue flags included, and everyone just holds the queue.)
       const gapNow = (aheadNow - car.progress) * lap;
-      const zone = track.zones.find((z) =>
-        crossedPosition(car.progress, carNext, z.position)
-      );
+      const zone = underSC
+        ? undefined
+        : track.zones.find((z) =>
+            crossedPosition(car.progress, carNext, z.position)
+          );
 
       // Blue flags: a car a whole lap ahead of the one in front is LAPPING
       // her, not racing her — and the backmarker's job is to get out of the
@@ -746,53 +822,76 @@ export function simulateRace(input: RaceInput): RaceResult {
       // --- Something goes wrong ------------------------------------------
       // Braking zones are where mistakes happen, which is why an incident has
       // a place name. Rolled per zone crossed, so a lap with three heavy
-      // braking zones carries three chances to get it wrong.
-      const aheadOf = roadAhead[car.index];
-      const lapNowFor = lapTimes[car.index];
-      const inDirty =
-        aheadOf !== null &&
-        ((roadPos[aheadOf.index] - roadPos[car.index] + 1) % 1) * lapNowFor <=
-          tune.dirtyAirWindow;
+      // braking zones carries three chances to get it wrong. Not under the
+      // safety car, though: nobody is on the limit trundling in a queue.
+      if (!underSC) {
+        const aheadOf = roadAhead[car.index];
+        const lapNowFor = lapTimes[car.index];
+        const inDirty =
+          aheadOf !== null &&
+          ((roadPos[aheadOf.index] - roadPos[car.index] + 1) % 1) * lapNowFor <=
+            tune.dirtyAirWindow;
 
-      for (const zone of track.zones) {
-        if (!crossedPosition(before, after, zone.position)) continue;
-        if (!rng.chance(incidentRisk(car, inDirty, tune))) continue;
+        for (const zone of track.zones) {
+          if (!crossedPosition(before, after, zone.position)) continue;
+          if (!rng.chance(incidentRisk(car, inDirty, tune))) continue;
 
-        const onDeadTyres = isOverCliff(COMPOUNDS[car.compound], car.wear);
-        const majorShare = onDeadTyres
-          ? tune.incidentMajorShareOnCliff
-          : tune.incidentMajorShare;
+          const onDeadTyres = isOverCliff(COMPOUNDS[car.compound], car.wear);
+          const majorShare = onDeadTyres
+            ? tune.incidentMajorShareOnCliff
+            : tune.incidentMajorShare;
 
-        if (rng.chance(majorShare)) {
-          // Into the barrier. Race over.
-          car.retired = "crash";
+          if (rng.chance(majorShare)) {
+            // Into the barrier. Race over.
+            car.retired = "crash";
+            events.push({
+              t,
+              lap: Math.floor(car.progress) + 1,
+              type: "retirement",
+              carId: car.entrant.id,
+              cause: "crash",
+              zone: zone.name,
+            });
+            // A car in the barrier sometimes brings out the safety car. Not
+            // always: a car neatly parked in a run-off needs no neutralising,
+            // and if EVERY crash threw a caution the race would be a lottery.
+            // The rest of this tick still runs green; the field sees yellows
+            // from the next tick, which is one half-second of racing — about
+            // what real reaction time looks like.
+            if (scPhase === "green" && rng.chance(tune.scDeployChance)) {
+              const leader = running.find((c) => !c.finished && !c.retired);
+              scPhase = "deployed";
+              scEndsAfterLap = (leader?.lapIndex ?? car.lapIndex) + tune.scLaps;
+              events.push({
+                t,
+                lap: Math.floor(car.progress) + 1,
+                type: "safetyCar",
+                phase: "deployed",
+              });
+            }
+            break;
+          }
+
+          // A moment: locked a wheel, ran wide, lost time — and flat-spotted
+          // the tyre, so the mistake keeps costing after the corner.
+          const timeLost = rng.range(
+            tune.lockupTimeLoss[0],
+            tune.lockupTimeLoss[1]
+          );
+          car.progress = Math.max(before, car.progress - timeLost / lapNowFor);
+          car.wear = Math.min(1, car.wear + tune.lockupFlatSpot);
           events.push({
             t,
             lap: Math.floor(car.progress) + 1,
-            type: "retirement",
+            type: "lockup",
             carId: car.entrant.id,
-            cause: "crash",
             zone: zone.name,
+            timeLost,
           });
-          break;
+          break; // one moment per tick is plenty
         }
-
-        // A moment: locked a wheel, ran wide, lost time — and flat-spotted the
-        // tyre, so the mistake keeps costing after the corner.
-        const timeLost = rng.range(tune.lockupTimeLoss[0], tune.lockupTimeLoss[1]);
-        car.progress = Math.max(before, car.progress - timeLost / lapNowFor);
-        car.wear = Math.min(1, car.wear + tune.lockupFlatSpot);
-        events.push({
-          t,
-          lap: Math.floor(car.progress) + 1,
-          type: "lockup",
-          carId: car.entrant.id,
-          zone: zone.name,
-          timeLost,
-        });
-        break; // one moment per tick is plenty
+        if (car.retired) continue;
       }
-      if (car.retired) continue;
 
       if (advanced > 0) {
         car.wear = Math.min(
@@ -803,7 +902,8 @@ export function simulateRace(input: RaceInput): RaceResult {
               car.mode,
               track.tyreWearFactor,
               advanced
-            )
+            ) *
+              (underSC ? tune.scWearMult : 1)
         );
       }
 
@@ -944,6 +1044,7 @@ export function simulateRace(input: RaceInput): RaceResult {
     const leader = ranked[0];
     frames.push({
       t,
+      safetyCar: underSC,
       cars: cars.map<CarFrame>((car) => {
         // The gap the timing screen shows: how far behind the race leader she
         // is, in seconds, at her current pace. A finished car's gap is settled.

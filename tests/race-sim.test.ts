@@ -799,3 +799,150 @@ describe("simulateRace — lapping and blue flags", () => {
     expect(a.classification).toEqual(b.classification);
   });
 });
+
+describe("simulateRace — the safety car", () => {
+  // A crash-prone field with a guaranteed deployment, so every seed that
+  // produces a crash produces a safety car. The mechanics under test:
+  // neutralisation, bunching, no passing, the restart.
+  const SC_TUNING = {
+    incidentBase: 0.008,
+    incidentMajorShare: 0.35,
+    scDeployChance: 1.0,
+    scLaps: 3,
+  };
+
+  function scRace(seed: number, tuning: object = SC_TUNING) {
+    return simulateRace({
+      track: getTrack("silverstone"),
+      laps: LAPS,
+      entrants: grid(),
+      seed,
+      tuning,
+    });
+  }
+
+  type ScEvent = Extract<RaceEvent, { type: "safetyCar" }>;
+
+  // Every deployed→green pair is one neutralised window; a deployment that
+  // never goes green runs to the end of the race.
+  function scWindows(result: ReturnType<typeof scRace>) {
+    const evs = result.events.filter(
+      (e): e is ScEvent => e.type === "safetyCar"
+    );
+    const windows: Array<{ from: number; to: number }> = [];
+    let open: number | null = null;
+    for (const e of evs) {
+      if (e.phase === "deployed") open = e.t;
+      if (e.phase === "green" && open !== null) {
+        windows.push({ from: open, to: e.t });
+        open = null;
+      }
+    }
+    if (open !== null) windows.push({ from: open, to: Infinity });
+    return windows;
+  }
+
+  function spreadAt(result: ReturnType<typeof scRace>, time: number) {
+    let frame = result.frames[0];
+    for (const f of result.frames) {
+      if (f.t <= time) frame = f;
+    }
+    const running = frame.cars.filter(
+      (c) => !c.finished && !c.retired && !c.inPit
+    );
+    return running.length
+      ? Math.max(...running.map((c) => c.gapToLeader))
+      : 0;
+  }
+
+  it("comes out for a crash, runs its laps, and goes green in order", () => {
+    const result = scRace(1);
+    const evs = result.events.filter(
+      (e): e is ScEvent => e.type === "safetyCar"
+    );
+    expect(evs.length).toBeGreaterThanOrEqual(3);
+    expect(evs[0].phase).toBe("deployed");
+    expect(evs[1].phase).toBe("ending");
+    expect(evs[2].phase).toBe("green");
+    expect(evs[0].t).toBeLessThan(evs[1].t);
+    expect(evs[1].t).toBeLessThan(evs[2].t);
+
+    // It came out FOR something: a car was already in the barrier.
+    const crash = result.events.find(
+      (e) => e.type === "retirement" && e.cause === "crash"
+    );
+    expect(crash).toBeDefined();
+    expect(crash!.t).toBeLessThanOrEqual(evs[0].t);
+
+    // And the frames agree with the events about when the field was neutral.
+    // Boundaries are exclusive: the deployment tick still ran green (the
+    // field reacts next tick), and the green-flag tick is already racing.
+    const windows = scWindows(result);
+    for (const f of result.frames) {
+      const inWindow = windows.some((w) => f.t > w.from && f.t < w.to);
+      expect(f.safetyCar).toBe(inWindow);
+    }
+  });
+
+  it("forbids ALL passing under yellow — blue flags included", () => {
+    for (const seed of [1, 5, 11, 13]) {
+      const result = scRace(seed);
+      const windows = scWindows(result);
+      expect(windows.length).toBeGreaterThan(0);
+      const passesUnderSC = result.events.filter(
+        (e) =>
+          e.type === "overtake" &&
+          windows.some((w) => e.t > w.from && e.t < w.to)
+      );
+      expect(passesUnderSC).toHaveLength(0);
+    }
+  });
+
+  it("bunches the field — the gaps you built evaporate", () => {
+    // Seed 11 deploys with the field spread over ~10s; by the restart the
+    // pack is nose-to-tail. This is the equaliser doing its job.
+    const result = scRace(11);
+    const w = scWindows(result)[0];
+    const before = spreadAt(result, w.from);
+    const atRestart = spreadAt(result, Math.min(w.to, result.frames.at(-1)!.t) - 0.5);
+    expect(before).toBeGreaterThan(8);
+    expect(atRestart).toBeLessThan(before * 0.6);
+    expect(atRestart).toBeLessThan(5);
+  });
+
+  it("slows the race down — that's what a safety car is", () => {
+    // Same seed, same crash, one race neutralised and one left green
+    // (chance(0) still draws, so the rng streams stay aligned up to the
+    // deployment): the neutralised race must take meaningfully longer.
+    const withSC = scRace(1);
+    const without = scRace(1, { ...SC_TUNING, scDeployChance: 0 });
+    expect(without.events.some((e) => e.type === "safetyCar")).toBe(false);
+    const winnerWith = withSC.classification[0].totalTime;
+    const winnerWithout = without.classification[0].totalTime;
+    expect(winnerWith).toBeGreaterThan(winnerWithout + 30);
+  });
+
+  it("restarts: racing resumes after the green flag", () => {
+    // Seed 11 has a second deployment — a crash AFTER the restart, which is
+    // itself proof the field went back to racing (incidents never roll under
+    // yellow). And everyone still gets classified.
+    const result = scRace(11);
+    const firstGreen = result.events.find(
+      (e) => e.type === "safetyCar" && e.phase === "green"
+    )!;
+    const racingAfter = result.events.some(
+      (e) =>
+        (e.type === "overtake" || e.type === "lockup" || e.type === "retirement") &&
+        e.t > firstGreen.t
+    );
+    expect(racingAfter).toBe(true);
+    expect(result.classification).toHaveLength(8);
+  });
+
+  it("is deterministic — same seed, same caution, same race", () => {
+    const a = scRace(11);
+    const b = scRace(11);
+    expect(a.events).toEqual(b.events);
+    expect(a.classification).toEqual(b.classification);
+  });
+});
