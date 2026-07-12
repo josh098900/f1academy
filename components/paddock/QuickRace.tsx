@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { PitWallSlider, StintPlan, TyrePicker } from "@/components/paddock/PitWall";
+import { Qualifying } from "@/components/paddock/Qualifying";
 import { RaceViewer } from "@/components/paddock/RaceViewer";
 import { Button } from "@/components/ui/button";
 import type { RatedDriver } from "@/lib/paddock/ratings";
@@ -12,7 +13,7 @@ import {
   type Strategy,
   buildRaceReport,
   getTrack,
-  gridFromQualifying,
+  simulateQualifying,
   simulateRace,
 } from "@/lib/race-sim";
 
@@ -75,7 +76,7 @@ function npcStrategy(rng: Rng): Strategy {
   };
 }
 
-type Phase = "setup" | "race";
+type Phase = "setup" | "quali" | "race";
 
 const COMPOUND_LABEL = { soft: "Soft", medium: "Medium", hard: "Hard" } as const;
 const CLIFF = { soft: 0.7, medium: 0.8, hard: 0.88 } as const;
@@ -137,7 +138,13 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
     ];
 
     const track = getTrack(TRACK_ID);
-    const grid = gridFromQualifying(entrants, track, committed.seed);
+    // Qualify once, and keep the sheet: it IS the grid, and it's also the screen
+    // the player now sees. (gridFromQualifying would re-run the shootout and
+    // throw the lap times away.)
+    const quali = simulateQualifying(entrants, track, committed.seed);
+    const byId = new Map(entrants.map((e) => [e.id, e]));
+    const grid = quali.map((q) => byId.get(q.id)!);
+
     const result = simulateRace({
       track,
       laps: LAPS,
@@ -149,7 +156,7 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
       playerId,
       gridOrder: grid.map((e) => e.id),
     });
-    return { entrants: grid, result, report, grid, playerId };
+    return { entrants: grid, result, report, grid, quali, playerId };
   }, [ranked, committed]);
 
   const me = ranked.find((d) => d.driverId === driverId);
@@ -166,7 +173,7 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
     // initializer runs on the server AND the client and disagrees.
     setCommitted({ driverId, strategy, seed: Math.floor(Math.random() * 1e9) });
     setShowResult(false);
-    setPhase("race");
+    setPhase("quali");
   }
 
   function raceAgain() {
@@ -311,6 +318,17 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
 
   if (!race) return null;
   const myGrid = race.grid.findIndex((e) => e.id === race.playerId) + 1;
+
+  if (phase === "quali") {
+    return (
+      <Qualifying
+        results={race.quali}
+        entrants={race.entrants}
+        playerId={race.playerId}
+        onContinue={() => setPhase("race")}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
