@@ -79,6 +79,10 @@ export type CarFrame = {
   wear: number; // 0→1
   mode: PaceMode;
   inPit: boolean;
+  // 0 → 1 through the pit stop (null when on track). The renderer drives the
+  // car down the pit lane with this, so you can see the stationary time your
+  // crew upgrade is buying.
+  pitProgress: number | null;
   finished: boolean;
 };
 

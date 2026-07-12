@@ -107,6 +107,7 @@ type CarState = {
   lapNoise: number; // rolled once per lap — see rollLapNoise
   lapIndex: number; // which lap the noise belongs to
   pitTimer: number; // seconds left stationary; > 0 means in the pits
+  pitDuration: number; // the full length of the stop being served
   stops: number;
   finished: boolean;
   finishTime: number;
@@ -316,6 +317,7 @@ export function simulateRace(input: RaceInput): RaceResult {
     lapNoise: 0,
     lapIndex: 0,
     pitTimer: 0,
+    pitDuration: 0,
     stops: 0,
     finished: false,
     finishTime: 0,
@@ -326,8 +328,18 @@ export function simulateRace(input: RaceInput): RaceResult {
   const frames: Frame[] = [];
   const events: RaceEvent[] = [];
   let t = 0;
+  let finishedCount = 0;
 
-  const order = () => [...cars].sort((a, b) => b.progress - a.progress);
+  // Race order. Finishing the distance beats being anywhere on track, and
+  // finishers are ranked by when they crossed — NOT by frozen progress, which
+  // is just wherever their final step happened to land.
+  const order = () =>
+    [...cars].sort((a, b) => {
+      if (a.finished && b.finished) return a.finishTime - b.finishTime;
+      if (a.finished) return -1;
+      if (b.finished) return 1;
+      return b.progress - a.progress;
+    });
 
   while (t < MAX_RACE_SECONDS && cars.some((c) => !c.finished)) {
     const running = order();
@@ -444,6 +456,10 @@ export function simulateRace(input: RaceInput): RaceResult {
     }
 
     // 5. Commit the tick: wear, lap boundaries, pit decisions, finishing.
+    // Cars that take the flag this tick are collected rather than announced
+    // immediately: more than one can cross inside a single step, and the order
+    // they happen to sit in the array is not the order they crossed the line.
+    const finishedThisTick: CarState[] = [];
     for (const car of cars) {
       if (car.finished) continue;
       const before = car.progress;
@@ -484,14 +500,17 @@ export function simulateRace(input: RaceInput): RaceResult {
 
         if (lapNow >= laps) {
           car.finished = true;
-          car.finishTime = t;
-          events.push({
-            t,
-            lap: laps,
-            type: "finish",
-            carId: car.entrant.id,
-            position: cars.filter((c) => c.finished).length,
-          });
+          // Interpolate WHEN in this tick she crossed the line. Without this,
+          // every finisher is timestamped at the tick boundary, cars that
+          // finish in the same tick tie, and the final gaps are quantised to
+          // the step size. It also stops a car that overshot the line by a
+          // bigger step from being ranked ahead of one that genuinely finished
+          // first — which is what put the winner back down the order as the
+          // rest of the field came home.
+          const span = after - before;
+          const crossed = span > 0 ? (laps - before) / span : 0;
+          car.finishTime = t + Math.min(1, Math.max(0, crossed)) * DT;
+          finishedThisTick.push(car);
           continue;
         }
 
@@ -508,6 +527,7 @@ export function simulateRace(input: RaceInput): RaceResult {
         if (shouldPit(car, tune, track, laps - lapNow)) {
           const duration = track.pitLoss + crewTime(car, tune);
           car.pitTimer = duration;
+          car.pitDuration = duration;
           car.compound = car.entrant.strategy.pitCompound;
           car.wear = 0;
           car.cliffAnnounced = false;
@@ -524,6 +544,20 @@ export function simulateRace(input: RaceInput): RaceResult {
       }
     }
 
+    // Announce the flag in true crossing order, so the finish events — and the
+    // positions stamped on them — reflect who actually got there first.
+    finishedThisTick.sort((a, b) => a.finishTime - b.finishTime);
+    for (const car of finishedThisTick) {
+      finishedCount += 1;
+      events.push({
+        t: car.finishTime,
+        lap: laps,
+        type: "finish",
+        carId: car.entrant.id,
+        position: finishedCount,
+      });
+    }
+
     // 6. Snapshot for the renderer.
     const ranked = order();
     const positionOf = new Map(ranked.map((c, i) => [c, i + 1]));
@@ -538,6 +572,10 @@ export function simulateRace(input: RaceInput): RaceResult {
         wear: car.wear,
         mode: car.mode,
         inPit: car.pitTimer > 0,
+        pitProgress:
+          car.pitTimer > 0 && car.pitDuration > 0
+            ? Math.min(1, Math.max(0, 1 - car.pitTimer / car.pitDuration))
+            : null,
         finished: car.finished,
       })),
     });

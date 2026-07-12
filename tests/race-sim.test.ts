@@ -174,6 +174,62 @@ describe("simulateRace — the race actually happens", () => {
     expect(stops).toBe(pits.length);
   });
 
+  it("never demotes a car after it has taken the flag", () => {
+    // Regression. Finished cars used to be ranked by their frozen progress —
+    // i.e. by however far past the line their final simulation step happened to
+    // land — so as the rest of the field came home, the winner drifted BACK down
+    // the timing tower. A car that has finished is ahead of anyone who hasn't,
+    // and finishers are ordered by when they actually crossed.
+    for (let seed = 0; seed < 8; seed++) {
+      const r = race(grid(), seed * 41 + 7);
+      const best = new Map<string, number>();
+      for (const frame of r.frames) {
+        for (const c of frame.cars) {
+          if (!c.finished) continue;
+          const seen = best.get(c.id);
+          if (seen !== undefined) {
+            // Once finished, a car's position must never get worse.
+            expect(c.position).toBeLessThanOrEqual(seen);
+          }
+          best.set(c.id, Math.min(seen ?? c.position, c.position));
+        }
+      }
+    }
+  });
+
+  it("gives the flag to whoever crossed the line first", () => {
+    for (let seed = 0; seed < 8; seed++) {
+      const r = race(grid(), seed * 53 + 3);
+      const finishes = r.events
+        .filter((e) => e.type === "finish")
+        .map((e) => ({ id: e.carId, t: e.t }));
+      // Finish events are emitted in crossing order…
+      for (let i = 1; i < finishes.length; i++) {
+        expect(finishes[i].t).toBeGreaterThanOrEqual(finishes[i - 1].t);
+      }
+      // …and that order IS the classification.
+      expect(r.classification.map((c) => c.id)).toEqual(finishes.map((f) => f.id));
+    }
+  });
+
+  it("puts a pitting car in the pit lane, not on the racing line", () => {
+    const r = race(grid(), 2024);
+    let sawPitProgress = false;
+    for (const frame of r.frames) {
+      for (const c of frame.cars) {
+        if (c.inPit) {
+          expect(c.pitProgress).not.toBeNull();
+          expect(c.pitProgress!).toBeGreaterThanOrEqual(0);
+          expect(c.pitProgress!).toBeLessThanOrEqual(1);
+          sawPitProgress = true;
+        } else {
+          expect(c.pitProgress).toBeNull();
+        }
+      }
+    }
+    expect(sawPitProgress).toBe(true);
+  });
+
   it("has wheel-to-wheel racing — passes and defences both occur", () => {
     const passes = result.events.filter((e) => e.type === "overtake");
     expect(passes.length).toBeGreaterThan(0);
