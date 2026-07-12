@@ -24,6 +24,8 @@ import {
 const SPEEDS = [1, 5, 20, 60];
 const DEFAULT_SPEED = 20;
 const PATH_SAMPLES = 720; // lookup table resolution around the lap
+const PIT_HALF_SPAN = 0.055; // how much of the lap the pit lane runs alongside
+const PIT_OFFSET = 30; // how far off the racing line the lane sits, in svg units
 
 type Props = {
   entrants: Entrant[];
@@ -33,6 +35,50 @@ type Props = {
 };
 
 type Point = { x: number; y: number };
+
+// The pit lane, derived from the racing line rather than hand-drawn per circuit.
+//
+// Take the stretch of track either side of the start/finish, push every point
+// out perpendicular to the track, and you have a lane that runs parallel to the
+// main straight — for free, on any circuit we ever add. (Perpendicular has two
+// directions; RacingLine.pitSide picks the one that isn't the infield.)
+function buildPitLane(samples: Point[], startLine: number, side: 1 | -1): Point[] {
+  const n = samples.length;
+  const at = (i: number) => samples[((i % n) + n) % n];
+  const startIdx = Math.round(startLine * n);
+  const half = Math.round(PIT_HALF_SPAN * n);
+
+  const lane: Point[] = [];
+  for (let k = -half; k <= half; k++) {
+    const i = startIdx + k;
+    const prev = at(i - 1);
+    const next = at(i + 1);
+    // Tangent along the track, normalised; the normal is it turned 90°.
+    const tx = next.x - prev.x;
+    const ty = next.y - prev.y;
+    const len = Math.hypot(tx, ty) || 1;
+    const nx = (-ty / len) * side;
+    const ny = (tx / len) * side;
+    const p = at(i);
+    lane.push({ x: p.x + nx * PIT_OFFSET, y: p.y + ny * PIT_OFFSET });
+  }
+  return lane;
+}
+
+// Where a car sits in the lane, 0→1, given how far through the stop it is.
+// It drives in, STOPS in the box — you're watching the stationary seconds your
+// pit-crew upgrade is paying for — then drives out.
+function pitLanePosition(pitProgress: number): number {
+  if (pitProgress < 0.3) return (pitProgress / 0.3) * 0.45;
+  if (pitProgress < 0.7) return 0.5; // stationary in the box
+  return 0.55 + ((pitProgress - 0.7) / 0.3) * 0.45;
+}
+
+function pointOn(points: Point[], t: number): Point {
+  if (points.length === 0) return { x: 0, y: 0 };
+  const i = Math.min(points.length - 1, Math.max(0, Math.round(t * (points.length - 1))));
+  return points[i];
+}
 
 export function RaceViewer({ entrants, trackId, laps, seed }: Props) {
   const line = getRacingLine(trackId);
@@ -61,6 +107,11 @@ export function RaceViewer({ entrants, trackId, laps, seed }: Props) {
     }
     setSamples(pts);
   }, [line?.d]);
+
+  const pitLane = useMemo(
+    () => (samples && line ? buildPitLane(samples, line.startLine, line.pitSide) : null),
+    [samples, line]
+  );
 
   const [raceTime, setRaceTime] = useState(0);
   const [speed, setSpeed] = useState(DEFAULT_SPEED);
@@ -195,16 +246,54 @@ export function RaceViewer({ entrants, trackId, laps, seed }: Props) {
                   />
                 );
               })}
-              {/* The cars. Slowest-first so the leader draws on top. */}
+              {/* The pit lane, and the box the cars actually stop in. */}
+              {pitLane && (
+                <>
+                  <polyline
+                    points={pitLane.map((p) => `${p.x},${p.y}`).join(" ")}
+                    fill="none"
+                    stroke="#1c1c1c"
+                    strokeWidth={13}
+                    strokeLinecap="round"
+                  />
+                  <polyline
+                    points={pitLane.map((p) => `${p.x},${p.y}`).join(" ")}
+                    fill="none"
+                    stroke="#2a2a2a"
+                    strokeWidth={1}
+                    strokeDasharray="3 5"
+                  />
+                  <circle
+                    cx={pointOn(pitLane, 0.5).x}
+                    cy={pointOn(pitLane, 0.5).y}
+                    r={5}
+                    fill="none"
+                    stroke="#ff2d92"
+                    strokeOpacity={0.5}
+                    strokeWidth={1.5}
+                  />
+                </>
+              )}
+
+              {/* The cars. Slowest-first so the leader draws on top. A car in
+                  the pits is drawn on the LANE, not frozen on the racing line.
+                  A car that has FINISHED is drawn nowhere: its progress stops at
+                  exactly lap 15.0, and 15.0 % 1 === 0 is the start/finish line,
+                  so finishers would otherwise pile up on top of the flag —
+                  which is precisely what they were doing. Once you take the
+                  chequered flag you are off the circuit; the tower has you. */}
               {live &&
                 [...live]
+                  .filter((c) => !c.finished)
                   .sort((a, b) => b.position - a.position)
                   .map((c) => {
-                    const p =
-                      samples[Math.floor(c.lapPosition * PATH_SAMPLES) % PATH_SAMPLES];
-                    const colour = c.isPlayer ? "#ff2d92" : c.inPit ? "#555555" : "#f5f5f5";
+                    const inPit = c.inPit && c.pitProgress !== null && pitLane;
+                    const p = inPit
+                      ? pointOn(pitLane!, pitLanePosition(c.pitProgress!))
+                      : samples[Math.floor(c.lapPosition * PATH_SAMPLES) % PATH_SAMPLES];
+                    const colour = c.isPlayer ? "#ff2d92" : "#f5f5f5";
                     return (
-                      <g key={c.id} opacity={c.inPit ? 0.45 : 1}>
+                      <g key={c.id} opacity={inPit ? 0.7 : 1}>
                         <circle
                           cx={p.x}
                           cy={p.y}
@@ -297,26 +386,34 @@ export function RaceViewer({ entrants, trackId, laps, seed }: Props) {
                 {c.position}
               </span>
               <span className="flex-1 truncate font-body text-primary">{c.name}</span>
-              <span
-                title={COMPOUNDS[c.compound].label}
-                className={`text-[10px] ${
-                  c.compound === "soft"
-                    ? "text-danger"
-                    : c.compound === "medium"
-                      ? "text-warning"
-                      : "text-info"
-                }`}
-              >
-                {COMPOUNDS[c.compound].label[0]}
-              </span>
-              {/* Tyre life — the bar empties as the tyre dies. */}
-              <span className="h-1 w-8 bg-border-default">
-                <span
-                  className="block h-1 bg-secondary"
-                  style={{ width: `${Math.max(0, 100 - c.wear * 100)}%` }}
-                />
-              </span>
-              {c.inPit ? <span className="text-[10px] text-accent">PIT</span> : null}
+              {c.finished ? (
+                <span className="text-[10px] tracking-wider text-success uppercase">
+                  Fin
+                </span>
+              ) : (
+                <>
+                  <span
+                    title={COMPOUNDS[c.compound].label}
+                    className={`text-[10px] ${
+                      c.compound === "soft"
+                        ? "text-danger"
+                        : c.compound === "medium"
+                          ? "text-warning"
+                          : "text-info"
+                    }`}
+                  >
+                    {COMPOUNDS[c.compound].label[0]}
+                  </span>
+                  {/* Tyre life — the bar empties as the tyre dies. */}
+                  <span className="h-1 w-8 bg-border-default">
+                    <span
+                      className="block h-1 bg-secondary"
+                      style={{ width: `${Math.max(0, 100 - c.wear * 100)}%` }}
+                    />
+                  </span>
+                  {c.inPit ? <span className="text-[10px] text-accent">PIT</span> : null}
+                </>
+              )}
             </li>
           ))}
         </ol>
