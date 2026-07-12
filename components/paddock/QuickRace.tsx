@@ -89,20 +89,32 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
   const [phase, setPhase] = useState<Phase>("setup");
   const [driverId, setDriverId] = useState<number>(ranked[0]?.driverId ?? 0);
   const [strategy, setStrategy] = useState<Strategy>(DEFAULT_STRATEGY);
-  const [seed, setSeed] = useState<number>(() => Math.floor(Math.random() * 1e9));
   const [showResult, setShowResult] = useState(false);
 
-  const playerId = String(driverId);
+  // The plan the player has actually COMMITTED to. Nothing is simulated until
+  // this exists.
+  //
+  // The race used to be a useMemo keyed on `strategy`, which meant every slider
+  // input event re-ran the entire 15-lap simulation — ~13ms a go, ~800ms of work
+  // for every second of dragging, so the pit wall stuttered under your thumb.
+  // It also ran server-side on every page load, simulating a full race for a
+  // screen that doesn't show one. The strategy screen needs no race; it only
+  // needs the stint plan, which is arithmetic.
+  const [committed, setCommitted] = useState<{
+    driverId: number;
+    strategy: Strategy;
+    seed: number;
+  } | null>(null);
 
-  // Build the race. Everything downstream — grid, result, report — is derived
-  // from this one deterministic computation.
   const race = useMemo(() => {
-    const me = ranked.find((d) => d.driverId === driverId);
+    if (!committed) return null;
+    const me = ranked.find((d) => d.driverId === committed.driverId);
     if (!me) return null;
 
-    const rng = new Rng(seed ^ 0x5f3759df);
+    const playerId = String(committed.driverId);
+    const rng = new Rng(committed.seed ^ 0x5f3759df);
     const rivals = ranked
-      .filter((d) => d.driverId !== driverId)
+      .filter((d) => d.driverId !== committed.driverId)
       .slice(0, FIELD - 1);
 
     const entrants: Entrant[] = [
@@ -111,7 +123,7 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
         name: me.shortName,
         driver: me.stats,
         car: STOCK_CAR,
-        strategy,
+        strategy: committed.strategy,
         isPlayer: true,
       },
       ...rivals.map((d) => ({
@@ -125,17 +137,23 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
     ];
 
     const track = getTrack(TRACK_ID);
-    const grid = gridFromQualifying(entrants, track, seed);
-    const result = simulateRace({ track, laps: LAPS, entrants: grid, seed });
+    const grid = gridFromQualifying(entrants, track, committed.seed);
+    const result = simulateRace({
+      track,
+      laps: LAPS,
+      entrants: grid,
+      seed: committed.seed,
+    });
     const report = buildRaceReport({
       result,
       playerId,
       gridOrder: grid.map((e) => e.id),
     });
-    return { entrants: grid, result, report, grid };
-  }, [ranked, driverId, strategy, seed, playerId]);
+    return { entrants: grid, result, report, grid, playerId };
+  }, [ranked, committed]);
 
-  if (!race) {
+  const me = ranked.find((d) => d.driverId === driverId);
+  if (!me) {
     return (
       <p className="font-body text-sm text-secondary">
         Not enough driver data to build a grid yet.
@@ -143,16 +161,16 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
     );
   }
 
-  const myGrid = race.grid.findIndex((e) => e.id === playerId) + 1;
-  const me = ranked.find((d) => d.driverId === driverId)!;
-
   function startRace() {
+    // The seed is minted here, not during render: Math.random() in a useState
+    // initializer runs on the server AND the client and disagrees.
+    setCommitted({ driverId, strategy, seed: Math.floor(Math.random() * 1e9) });
     setShowResult(false);
     setPhase("race");
   }
 
   function raceAgain() {
-    setSeed(Math.floor(Math.random() * 1e9));
+    setCommitted(null);
     setShowResult(false);
     setPhase("setup");
   }
@@ -290,6 +308,9 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
       </div>
     );
   }
+
+  if (!race) return null;
+  const myGrid = race.grid.findIndex((e) => e.id === race.playerId) + 1;
 
   return (
     <div className="space-y-6">

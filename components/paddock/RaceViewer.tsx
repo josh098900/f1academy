@@ -142,6 +142,14 @@ export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
     return () => cancelAnimationFrame(raf);
   }, [playing, speed, duration]);
 
+  // Entrant lookup, hoisted out of the animation loop: `live` and the ticker
+  // both run on every frame, and a linear find per car per frame is work we can
+  // just not do.
+  const byId = useMemo(
+    () => new Map(entrants.map((e) => [e.id, e])),
+    [entrants]
+  );
+
   // Interpolate between the two frames either side of `raceTime`, so the dots
   // glide instead of stepping at the sim's 0.5s tick. We interpolate TOTAL
   // progress (lap + position), never the 0→1 lap position on its own — that
@@ -163,7 +171,7 @@ export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
       const bTotal = next.lap + next.lapPosition;
       // Guard the wrap: if b looks "behind" a, the car crossed the line.
       const total = bTotal >= aTotal ? aTotal + (bTotal - aTotal) * k : aTotal;
-      const entrant = entrants.find((e) => e.id === car.id)!;
+      const entrant = byId.get(car.id)!;
       return {
         ...car,
         name: entrant.name,
@@ -171,7 +179,7 @@ export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
         isPlayer: entrant.isPlayer,
       };
     });
-  }, [result.frames, raceTime, entrants]);
+  }, [result.frames, raceTime, byId]);
 
   // The most recent few events, as a commentary ticker.
   const ticker = useMemo(
@@ -183,7 +191,7 @@ export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
     [result.events, raceTime]
   );
 
-  const nameOf = (id: string) => entrants.find((e) => e.id === id)?.name ?? id;
+  const nameOf = (id: string) => byId.get(id)?.name ?? id;
 
   if (!line) {
     return (
