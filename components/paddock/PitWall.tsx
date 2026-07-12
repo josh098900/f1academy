@@ -138,11 +138,13 @@ export function PitWallSlider({
   danger?: boolean;
 }) {
   const fill = ((value - min) / (max - min)) * 100;
+  // ids can't carry spaces, and every label here has them.
+  const id = `pw-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   return (
     <div>
       <div className="flex items-baseline justify-between gap-4">
         <label
-          htmlFor={`pw-${label}`}
+          htmlFor={id}
           className="font-mono text-[10px] tracking-[0.2em] text-secondary uppercase"
         >
           {label}
@@ -157,7 +159,7 @@ export function PitWallSlider({
         </span>
       </div>
       <input
-        id={`pw-${label}`}
+        id={id}
         type="range"
         min={min}
         max={max}
