@@ -77,6 +77,21 @@ describe("QuickRace — the pit wall", () => {
     expect(screen.getByText(/bring it home/i)).toBeInTheDocument();
   });
 
+  it("pre-commits the safety-car call on the pit wall, boxing by default", async () => {
+    const user = userEvent.setup();
+    render(<QuickRace drivers={DRIVERS} />);
+
+    // The default is what a real pit wall would do: take the cheap stop.
+    const box = screen.getByRole("button", { name: /box for the cheap stop/i });
+    const stay = screen.getByRole("button", { name: /stay out/i });
+    expect(box).toHaveAttribute("aria-pressed", "true");
+    expect(stay).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(stay);
+    expect(stay).toHaveAttribute("aria-pressed", "true");
+    expect(box).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("runs qualifying before the race, and shows every driver's lap", async () => {
     const user = userEvent.setup();
     render(<QuickRace drivers={DRIVERS} />);

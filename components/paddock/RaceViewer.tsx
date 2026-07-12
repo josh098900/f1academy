@@ -557,8 +557,11 @@ export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
                     </>
                   ) : e.type === "pit" ? (
                     <>
-                      <span className="text-primary">{nameOf(e.carId)}</span> boxes —{" "}
-                      {COMPOUNDS[e.to].label}
+                      <span className="text-primary">{nameOf(e.carId)}</span> boxes
+                      {e.underSC ? (
+                        <span className="text-warning"> under the safety car</span>
+                      ) : null}{" "}
+                      — {COMPOUNDS[e.to].label}
                     </>
                   ) : e.type === "cliff" ? (
                     <>

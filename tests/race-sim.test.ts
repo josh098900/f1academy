@@ -28,6 +28,9 @@ function strategy(overrides: Partial<Strategy> = {}): Strategy {
     startCompound: "medium",
     pitCompound: "hard",
     pitAtWear: 0.7,
+    // Off by default in tests so the controlled experiments stay controlled;
+    // the game's DEFAULT_STRATEGY has it on, as a real pit wall would.
+    boxUnderSafetyCar: false,
     attackWithin: 1.0,
     conserveWhenLeadingBy: 3.0,
     ...overrides,
@@ -945,4 +948,122 @@ describe("simulateRace — the safety car", () => {
     expect(a.events).toEqual(b.events);
     expect(a.classification).toEqual(b.classification);
   });
+});
+
+describe("simulateRace — the safety-car stop", () => {
+  const SC_TUNING = {
+    incidentBase: 0.008,
+    incidentMajorShare: 0.35,
+    scDeployChance: 1.0,
+    scLaps: 3,
+  };
+
+  it("obeys the call: committed cars box under the caution, refusers never do", () => {
+    // Two cars that will NEVER stop on wear (threshold unreachable), so the
+    // only stop either can possibly make is the safety-car one. One is
+    // committed to it, one has refused it. The rest of the field is normal.
+    const boxer = entrant("boxer", {
+      strategy: strategy({ pitAtWear: 2, boxUnderSafetyCar: true }),
+    });
+    const refuser = entrant("refuser", {
+      strategy: strategy({ pitAtWear: 2, boxUnderSafetyCar: false }),
+    });
+
+    let observed = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      const result = simulateRace({
+        track: getTrack("silverstone"),
+        laps: LAPS,
+        entrants: [boxer, refuser, ...grid(6)],
+        seed,
+        tuning: SC_TUNING,
+        captureFrames: false,
+      });
+
+      // The refuser NEVER stops, caution or not. Unconditional.
+      expect(
+        result.events.filter((e) => e.type === "pit" && e.carId === "refuser")
+      ).toHaveLength(0);
+
+      const deployed = result.events.find(
+        (e) => e.type === "safetyCar" && e.phase === "deployed"
+      );
+      const green = result.events.find(
+        (e) => e.type === "safetyCar" && e.phase === "green"
+      );
+      const boxerOut = result.events.some(
+        (e) =>
+          e.type === "retirement" &&
+          e.carId === "boxer" &&
+          (green === undefined || e.t < green.t)
+      );
+      // A caution early enough that a stop is still allowed, with the boxer
+      // still running: the committed stop MUST happen, under the caution.
+      if (!deployed || deployed.lap > 10 || boxerOut) continue;
+      observed++;
+
+      const stops = result.events.filter(
+        (e) => e.type === "pit" && e.carId === "boxer"
+      );
+      expect(stops).toHaveLength(1);
+      expect(stops[0].type === "pit" && stops[0].underSC).toBe(true);
+      expect(stops[0].lap).toBeGreaterThanOrEqual(deployed.lap);
+    }
+    // The loop must have actually tested the thing.
+    expect(observed).toBeGreaterThanOrEqual(3);
+  });
+
+  it("is a measured edge, not a win button", () => {
+    // Eight clones, half committed to the safety-car stop, half refusing it —
+    // with the assignment flipped on alternating seeds, because even grid
+    // slots (P1, P3, ...) average a better start than odd ones and an
+    // unflipped experiment measures grid position, not the rule. (Found the
+    // hard way: the first probe's "control" showed an edge with the safety
+    // car switched OFF.)
+    //
+    // Measured over 400 races: boxing under the caution is worth ~0.4 mean
+    // positions and ~14% vs ~11% wins per car in caution races, and exactly
+    // nothing in races without one. The spice, not the meal.
+    let onSum = 0;
+    let offSum = 0;
+    let count = 0;
+    let scRaces = 0;
+    const N = 200;
+    for (let s = 0; s < N; s++) {
+      const flip = s % 2 === 1;
+      const entrants = Array.from({ length: 8 }, (_, i) =>
+        entrant(`car-${i}`, {
+          strategy: strategy({
+            boxUnderSafetyCar: (i % 2 === 0) !== flip,
+          }),
+        })
+      );
+      const r = simulateRace({
+        track: getTrack("silverstone"),
+        laps: LAPS,
+        entrants,
+        seed: s * 104729 + 7,
+        tuning: SC_TUNING,
+        captureFrames: false,
+      });
+      const deployed = r.events.find(
+        (e) => e.type === "safetyCar" && e.phase === "deployed"
+      );
+      if (!deployed || deployed.lap > 10) continue;
+      scRaces++;
+      for (const c of r.classification) {
+        const idx = Number(c.id.split("-")[1]);
+        if ((idx % 2 === 0) !== flip) onSum += c.position;
+        else offSum += c.position;
+        count++;
+      }
+    }
+    expect(scRaces).toBeGreaterThan(100);
+    const onMean = onSum / (count / 2);
+    const offMean = offSum / (count / 2);
+    // A real, repeatable edge...
+    expect(offMean - onMean).toBeGreaterThan(0.1);
+    // ...that stays an edge, not a guarantee.
+    expect(offMean - onMean).toBeLessThan(1.5);
+  }, STATS_TIMEOUT);
 });

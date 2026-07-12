@@ -18,6 +18,7 @@ const PLAN: Strategy = {
   startCompound: "medium",
   pitCompound: "hard",
   pitAtWear: 0.65,
+  boxUnderSafetyCar: false,
   attackWithin: 1.0,
   conserveWhenLeadingBy: 3.0,
 };

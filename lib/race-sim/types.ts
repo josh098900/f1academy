@@ -30,6 +30,11 @@ export type Strategy = {
   // Box when tyre wear crosses this (0–1). There is no safety net: set it past
   // the compound's cliff and you will run on dead tyres, which is the point.
   pitAtWear: number;
+  // If the safety car comes out and the stop is still in hand, take it NOW —
+  // the field is trundling, so the stationary seconds cost a fraction of the
+  // usual track position. Literal, like everything here: toggle it on and an
+  // early caution WILL spend your only stop on lap 3. That gamble is the rule.
+  boxUnderSafetyCar: boolean;
   // Push (faster, burns tyres) when this close to the car ahead, in seconds.
   attackWithin: number;
   // Conserve (slower, saves tyres) when leading the car behind by this much.
@@ -116,7 +121,9 @@ export type RaceEvent =
       zone: string | null; // where she binned it; null for a mechanical
     }
   | { t: number; lap: number; type: "defended"; carId: string; byCarId: string; zone: string }
-  | { t: number; lap: number; type: "pit"; carId: string; to: CompoundId; duration: number }
+  // `underSC` marks a stop taken while the field was neutralised — the cheap
+  // one. The report and the ticker both tell that story differently.
+  | { t: number; lap: number; type: "pit"; carId: string; to: CompoundId; duration: number; underSC?: boolean }
   | { t: number; lap: number; type: "cliff"; carId: string } // tyres fell off the shelf
   // deployed → the field is neutralised; ending → last SC lap; green → racing.
   | { t: number; lap: number; type: "safetyCar"; phase: "deployed" | "ending" | "green" }
