@@ -27,6 +27,10 @@ import type {
 export * from "./types";
 export { COMPOUNDS, MODES } from "./tyres";
 export { TRACKS, TRACK_IDS, getTrack } from "./tracks";
+export { RACING_LINES, RACEABLE_TRACKS, getRacingLine } from "./racing-lines";
+export type { RacingLine } from "./racing-lines";
+export { deriveDriverStats, NEUTRAL } from "./derive";
+export type { DriverForm } from "./derive";
 export { Rng } from "./rng";
 
 // --- Tuning constants. Every one of these is a gameplay dial. ---------------

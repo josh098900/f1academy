@@ -110,6 +110,26 @@ export default async function DashboardPage() {
           </section>
         )}
 
+        {/* The Paddock — preview of the racing game (P2). Not in the main nav
+            until it's a real feature; a card is the honest way to surface a
+            work in progress. */}
+        <Link
+          href="/paddock"
+          className="group flex max-w-2xl items-center gap-4 border border-accent/30 bg-accent/[0.03] p-5 transition-colors hover:border-accent/60"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="font-display text-xs tracking-[0.2em] text-accent uppercase">
+              The Paddock · Preview
+            </p>
+            <p className="mt-2 font-body text-sm leading-relaxed text-secondary">
+              Watch a 15-lap race at Silverstone, simulated. Real drivers, rated
+              from their real results — tyres go off, and passes only happen where
+              a pass is actually possible.
+            </p>
+          </div>
+          <ArrowRight className="size-4 shrink-0 text-accent transition-transform group-hover:translate-x-1" />
+        </Link>
+
         {/* Latest updates — only renders when there's news to show. */}
         {announcements.length > 0 ? (
           <section className="max-w-2xl space-y-4 border border-accent/30 bg-accent/[0.03] p-6">
