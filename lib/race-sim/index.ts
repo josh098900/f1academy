@@ -163,6 +163,7 @@ export const DEFAULT_TUNING: Tuning = {
 // --- Internal per-car state ------------------------------------------------
 
 type CarState = {
+  index: number; // its slot in `cars` — lets the hot loop use arrays, not Maps
   entrant: Entrant;
   progress: number; // total laps completed, as a float. Higher = further ahead.
   compound: CompoundId;
@@ -427,12 +428,14 @@ export function gridFromQualifying(
 
 export function simulateRace(input: RaceInput): RaceResult {
   const { track, laps, entrants, seed } = input;
+  const captureFrames = input.captureFrames ?? true;
   const tune: Tuning = { ...DEFAULT_TUNING, ...input.tuning };
   const rng = new Rng(seed);
 
   // Grid order: pole sits marginally up the road, so lap 1 starts realistically
   // strung out rather than as an eight-way dead heat.
   const cars: CarState[] = entrants.map((entrant, gridIndex) => ({
+    index: gridIndex,
     entrant,
     progress: -gridIndex * (tune.carLengthSeconds / track.baseLapTime) * 2,
     compound: entrant.strategy.startCompound,
@@ -459,23 +462,49 @@ export function simulateRace(input: RaceInput): RaceResult {
   let finishedCount = 0;
   let fastestLap: RaceResult["fastestLap"] = null;
 
+  // Scratch buffers, allocated once and reused every tick. See the note above
+  // simulateRace: a 15-lap race runs ~3,600 ticks, and rebuilding two arrays and
+  // two object-keyed Maps on each of them cost ~18,000 allocations per race —
+  // enough to push the statistical tests past CI's timeout. Determinism is
+  // untouched; this only changes where the numbers are kept.
+  const running: CarState[] = [...cars];
+  const onTrack: CarState[] = [];
+  const proposed = new Array<number>(cars.length).fill(0);
+  const lapTimes = new Array<number>(cars.length).fill(track.baseLapTime);
+  const finishedThisTick: CarState[] = [];
+
   // Race order. Out of the race is behind everyone still in it; finishing the
   // distance beats being anywhere on track; and finishers are ranked by when
   // they crossed — NOT by frozen progress, which is just wherever their final
   // step happened to land.
-  const order = () =>
-    [...cars].sort((a, b) => {
-      if (a.retired && b.retired) return b.progress - a.progress;
-      if (a.retired) return 1;
-      if (b.retired) return -1;
-      if (a.finished && b.finished) return a.finishTime - b.finishTime;
-      if (a.finished) return -1;
-      if (b.finished) return 1;
-      return b.progress - a.progress;
-    });
+  // A TOTAL order — every comparison falls back to the grid index, so no two
+  // cars ever tie.
+  //
+  // This matters because `running` is a reused buffer sorted in place, so each
+  // tick begins in the PREVIOUS tick's order rather than a fresh copy of `cars`.
+  // JS sort is stable, so a genuine tie would resolve according to whatever
+  // order the buffer happened to be left in — and the race would depend on its
+  // own history rather than only on the seed. Breaking every tie explicitly
+  // means the comparator alone decides, and determinism is a property of the
+  // maths rather than an accident of the buffer.
+  const byRaceOrder = (a: CarState, b: CarState) => {
+    if (a.retired !== null && b.retired !== null) {
+      return b.progress - a.progress || a.index - b.index;
+    }
+    if (a.retired !== null) return 1;
+    if (b.retired !== null) return -1;
+    if (a.finished && b.finished) {
+      return a.finishTime - b.finishTime || a.index - b.index;
+    }
+    if (a.finished) return -1;
+    if (b.finished) return 1;
+    return b.progress - a.progress || a.index - b.index;
+  };
+  // Sorts the reused `running` buffer in place.
+  const order = () => running.sort(byRaceOrder);
 
   while (t < MAX_RACE_SECONDS && cars.some((c) => !c.finished && !c.retired)) {
-    const running = order();
+    order();
 
     // 1. Serve pit stops. A stationary car makes no progress — which is exactly
     // why the pit loss hurts, and why the crew upgrade is worth buying.
@@ -493,9 +522,10 @@ export function simulateRace(input: RaceInput): RaceResult {
     // stopped dead on the straight, nose-to-tail, queueing behind a rival who
     // was in the pit box. It was visible on screen as cars parked on the flag,
     // and it was quietly distorting every race result.
-    const onTrack = running.filter(
-      (c) => !c.finished && !c.retired && c.pitTimer === 0
-    );
+    onTrack.length = 0;
+    for (const c of running) {
+      if (!c.finished && !c.retired && c.pitTimer === 0) onTrack.push(c);
+    }
 
     // 2. Choose pace mode from each car's own pre-committed rules.
     for (let i = 0; i < onTrack.length; i++) {
@@ -515,17 +545,15 @@ export function simulateRace(input: RaceInput): RaceResult {
     // 3. Advance every car, then resolve blocking front-to-back so that a slow
     // car genuinely holds up everyone behind it. Trains are a feature: they are
     // what make track position, and therefore strategy, matter.
-    const proposed = new Map<CarState, number>();
-    const lapTimes = new Map<CarState, number>();
 
     for (const car of cars) {
       if (car.finished || car.retired) {
-        proposed.set(car, car.progress);
+        proposed[car.index] = car.progress;
         continue;
       }
       if (car.pitTimer > 0) {
-        proposed.set(car, car.progress); // stationary in the box
-        lapTimes.set(car, lapTimeFor(car, track, false, tune, laps));
+        proposed[car.index] = car.progress; // stationary in the box
+        lapTimes[car.index] = lapTimeFor(car, track, false, tune, laps);
       }
     }
 
@@ -539,8 +567,8 @@ export function simulateRace(input: RaceInput): RaceResult {
       const inDirtyAir = gapAhead <= tune.dirtyAirWindow;
 
       const lap = lapTimeFor(car, track, inDirtyAir, tune, laps);
-      lapTimes.set(car, lap);
-      proposed.set(car, car.progress + DT / lap);
+      lapTimes[car.index] = lap;
+      proposed[car.index] = car.progress + DT / lap;
     }
 
     // 4. Blocking + overtakes, among the cars actually on the racing line.
@@ -548,9 +576,9 @@ export function simulateRace(input: RaceInput): RaceResult {
       const car = onTrack[i];
       const ahead = onTrack[i - 1];
 
-      const carNext = proposed.get(car)!;
-      const aheadNext = proposed.get(ahead)!;
-      const lap = lapTimes.get(car) ?? track.baseLapTime;
+      const carNext = proposed[car.index];
+      const aheadNext = proposed[ahead.index];
+      const lap = lapTimes[car.index];
       const buffer = tune.carLengthSeconds / lap; // in laps
 
       // Would it end this tick alongside or past the car in front?
@@ -567,13 +595,13 @@ export function simulateRace(input: RaceInput): RaceResult {
           car,
           ahead,
           lap,
-          lapTimes.get(ahead) ?? lap,
+          lapTimes[ahead.index],
           zone.difficulty,
           tune
         );
         if (rng.chance(p)) {
           // Through. Take the position: slot in a car length ahead.
-          proposed.set(car, aheadNext + buffer);
+          proposed[car.index] = aheadNext + buffer;
           events.push({
             t,
             lap: Math.max(0, Math.floor(car.progress)) + 1,
@@ -593,23 +621,23 @@ export function simulateRace(input: RaceInput): RaceResult {
           byCarId: car.entrant.id,
           zone: zone.name,
         });
-        proposed.set(car, aheadNext - buffer - tune.failedPassCost / lap);
+        proposed[car.index] = aheadNext - buffer - tune.failedPassCost / lap;
         continue;
       }
 
       // No way past here — sit in the dirty air and wait for a zone.
-      proposed.set(car, Math.min(carNext, aheadNext - buffer));
+      proposed[car.index] = Math.min(carNext, aheadNext - buffer);
     }
 
     // 5. Commit the tick: wear, lap boundaries, pit decisions, finishing.
     // Cars that take the flag this tick are collected rather than announced
     // immediately: more than one can cross inside a single step, and the order
     // they happen to sit in the array is not the order they crossed the line.
-    const finishedThisTick: CarState[] = [];
+    finishedThisTick.length = 0;
     for (const car of cars) {
       if (car.finished || car.retired) continue;
       const before = car.progress;
-      const after = proposed.get(car)!;
+      const after = proposed[car.index];
       const advanced = Math.max(0, after - before);
       car.progress = after;
 
@@ -620,7 +648,7 @@ export function simulateRace(input: RaceInput): RaceResult {
       // a place name. Rolled per zone crossed, so a lap with three heavy
       // braking zones carries three chances to get it wrong.
       const aheadOf = onTrack[onTrack.indexOf(car) - 1];
-      const lapNowFor = lapTimes.get(car) ?? track.baseLapTime;
+      const lapNowFor = lapTimes[car.index];
       const inDirty =
         aheadOf !== undefined &&
         (aheadOf.progress - car.progress) * lapNowFor <= tune.dirtyAirWindow;
@@ -804,7 +832,12 @@ export function simulateRace(input: RaceInput): RaceResult {
       });
     }
 
-    // 6. Snapshot for the renderer.
+    // 6. Snapshot for the renderer — the single most expensive thing the sim
+    // does, and pure waste when nobody is going to watch it.
+    if (!captureFrames) {
+      t += DT;
+      continue;
+    }
     const ranked = order();
     const positionOf = new Map(ranked.map((c, i) => [c, i + 1]));
     const leader = ranked[0];

@@ -137,6 +137,14 @@ export type RaceInput = {
   // Balance dials. Omit for the tuned defaults; override to sweep or to pin a
   // historical balance so an old race replays exactly as it was raced.
   tuning?: Partial<import("./index").Tuning>;
+  // Record the frame-by-frame timeline the renderer animates. Default true.
+  //
+  // Set false when you only want the RESULT — a balance sweep, a statistical
+  // test, an NPC's race. A 15-lap race emits ~3,600 frames x 8 cars, so ~29,000
+  // objects get allocated purely for a renderer that isn't watching; skipping
+  // them makes the sim roughly 3x faster and allocates nothing. The race itself
+  // is bit-for-bit identical either way — frames are an output, not an input.
+  captureFrames?: boolean;
 };
 
 export type RaceResult = {

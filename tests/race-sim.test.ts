@@ -54,6 +54,29 @@ function race(entrants: Entrant[], seed = 1234, trackId = "zandvoort") {
   return simulateRace({ track: getTrack(trackId), laps: LAPS, entrants, seed });
 }
 
+// The same race, without building the ~29,000 frame objects a renderer would
+// animate. Statistical tests run hundreds of races and read only the events and
+// the classification; the timeline is pure waste to them, and building it was
+// what pushed these tests past CI's 5s timeout.
+function raceResultOnly(
+  entrants: Entrant[],
+  seed: number,
+  trackId = "zandvoort"
+) {
+  return simulateRace({
+    track: getTrack(trackId),
+    laps: LAPS,
+    entrants,
+    seed,
+    captureFrames: false,
+  });
+}
+
+// Statistical tests need hundreds of races to say anything true. They are
+// legitimately slow, so say so rather than living one CI runner away from a
+// flake.
+const STATS_TIMEOUT = 30_000;
+
 describe("Rng", () => {
   it("is deterministic for a seed and differs across seeds", () => {
     const a = new Rng(42);
@@ -308,7 +331,7 @@ describe("simulateRace — things go wrong", () => {
     for (let s = 0; s < seeds; s++) {
       const field = grid();
       field[0] = { ...field[0], id: "hero", name: "hero", strategy: plan };
-      const r = race(field, s * 7919 + 13, "silverstone");
+      const r = raceResultOnly(field, s * 7919 + 13, "silverstone");
       if (r.events.some((e) => e.type === "retirement" && e.carId === "hero")) {
         out++;
       }
@@ -326,7 +349,7 @@ describe("simulateRace — things go wrong", () => {
 
     expect(sensible).toBeLessThan(0.08); // rare enough not to feel arbitrary
     expect(reckless).toBeGreaterThan(sensible * 2.5); // and clearly your own doing
-  });
+  }, STATS_TIMEOUT);
 
   it("gives the tyre cliff teeth: past it, you can lose the race, not just seconds", () => {
     // Before incidents, running past the cliff only cost time. A dead tyre has
@@ -336,7 +359,7 @@ describe("simulateRace — things go wrong", () => {
     for (let s = 0; s < 200; s++) {
       const field = grid();
       field[0] = { ...field[0], id: "hero", name: "hero", strategy: RECKLESS };
-      const r = race(field, s * 31 + 5, "silverstone");
+      const r = raceResultOnly(field, s * 31 + 5, "silverstone");
       const cliff = r.events.find((e) => e.type === "cliff" && e.carId === "hero");
       const crash = r.events.find(
         (e) => e.type === "retirement" && e.carId === "hero" && e.cause === "crash"
@@ -344,7 +367,7 @@ describe("simulateRace — things go wrong", () => {
       if (cliff && crash && crash.lap >= cliff.lap) crashesAfterCliff++;
     }
     expect(crashesAfterCliff).toBeGreaterThan(0);
-  });
+  }, STATS_TIMEOUT);
 
   it("puts every incident at a real braking zone", () => {
     const zones = new Set(getTrack("silverstone").zones.map((z) => z.name));
@@ -468,7 +491,7 @@ describe("simulateRace — leading must not be a penalty", () => {
       if (r.classification[0].id === order[0].id) poleWins++;
     }
     expect(poleWins / runs).toBeGreaterThan(0.3);
-  });
+  }, STATS_TIMEOUT);
 });
 
 describe("simulateRace — stats and strategy decide races", () => {
@@ -487,7 +510,13 @@ describe("simulateRace — stats and strategy decide races", () => {
       const seed = s * 7919 + 13;
       const track = getTrack(trackId);
       const order = gridFromQualifying(field, track, seed);
-      const result = simulateRace({ track, laps: LAPS, entrants: order, seed });
+      const result = simulateRace({
+        track,
+        laps: LAPS,
+        entrants: order,
+        seed,
+        captureFrames: false,
+      });
       if (result.classification[0].id === "hero") wins++;
     }
     return wins / SEEDS;
@@ -499,7 +528,7 @@ describe("simulateRace — stats and strategy decide races", () => {
       driver: driver({ pace: 100, racecraft: 100, consistency: 100 }),
     }));
     expect(rate).toBeGreaterThan(BASELINE * 2);
-  });
+  }, STATS_TIMEOUT);
 
   it("rewards a better car, decisively", () => {
     const rate = winRate((e) => ({
@@ -507,7 +536,7 @@ describe("simulateRace — stats and strategy decide races", () => {
       car: car({ power: 100, aero: 100, reliability: 90, pitCrew: 90 }),
     }));
     expect(rate).toBeGreaterThan(BASELINE * 2);
-  });
+  }, STATS_TIMEOUT);
 
   it("makes a SMALL edge a nudge, not a win button", () => {
     // +15 pace on one stat must help — but a modest advantage must not win half
@@ -516,7 +545,7 @@ describe("simulateRace — stats and strategy decide races", () => {
     const rate = winRate((e) => ({ ...e, driver: driver({ pace: 75 }) }));
     expect(rate).toBeGreaterThan(BASELINE);
     expect(rate).toBeLessThan(0.5);
-  });
+  }, STATS_TIMEOUT);
 
   it("keeps the tyre economy alive — a stop has to be worth making", () => {
     // If degradation is ever tuned so gently that fresh rubber can't pay back a
@@ -565,7 +594,7 @@ describe("simulateRace — stats and strategy decide races", () => {
       if (a.position < b.position) sensibleAhead++;
     }
     expect(sensibleAhead / SEEDS).toBeGreaterThan(0.6);
-  });
+  }, STATS_TIMEOUT);
 });
 
 describe("simulateQualifying", () => {
@@ -628,5 +657,5 @@ describe("simulateRace — track character", () => {
       return total / runs;
     };
     expect(passesPerRace("vegas")).toBeGreaterThan(passesPerRace("zandvoort") * 2);
-  });
+  }, STATS_TIMEOUT);
 });
