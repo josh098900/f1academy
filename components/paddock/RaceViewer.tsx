@@ -307,7 +307,7 @@ export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
                   chequered flag you are off the circuit; the tower has you. */}
               {live &&
                 [...live]
-                  .filter((c) => !c.finished)
+                  .filter((c) => !c.finished && !c.retired)
                   .sort((a, b) => b.position - a.position)
                   .map((c) => {
                     const inPit = c.inPit && c.pitProgress !== null && pitLane;
@@ -435,15 +435,21 @@ export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
                   c.position === 1 ? "text-secondary" : "text-muted"
                 }`}
               >
-                {c.finished
-                  ? c.position === 1
-                    ? "WIN"
-                    : `+${c.gapToLeader.toFixed(1)}`
-                  : c.position === 1
-                    ? "LEADER"
-                    : `+${c.gapToLeader.toFixed(1)}`}
+                {c.retired
+                  ? "—"
+                  : c.finished
+                    ? c.position === 1
+                      ? "WIN"
+                      : `+${c.gapToLeader.toFixed(1)}`
+                    : c.position === 1
+                      ? "LEADER"
+                      : `+${c.gapToLeader.toFixed(1)}`}
               </span>
-              {c.finished ? (
+              {c.retired ? (
+                <span className="text-[10px] tracking-wider text-danger uppercase">
+                  DNF
+                </span>
+              ) : c.finished ? (
                 <span className="text-[10px] tracking-wider text-success uppercase">
                   Fin
                 </span>
@@ -499,6 +505,23 @@ export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
                     <>
                       <span className="text-danger">{nameOf(e.carId)}</span>&apos;s tyres are
                       gone
+                    </>
+                  ) : e.type === "lockup" ? (
+                    <>
+                      <span className="text-warning">{nameOf(e.carId)}</span> locks up at{" "}
+                      {e.zone} — loses {e.timeLost.toFixed(1)}s
+                    </>
+                  ) : e.type === "retirement" ? (
+                    <>
+                      <span className="text-danger">{nameOf(e.carId)}</span>{" "}
+                      {e.cause === "crash"
+                        ? `is out — into the barrier at ${e.zone}`
+                        : "is out — the car has let her down"}
+                    </>
+                  ) : e.type === "fastestLap" ? (
+                    <>
+                      <span className="text-info">{nameOf(e.carId)}</span> takes the fastest
+                      lap
                     </>
                   ) : e.type === "finish" ? (
                     <>

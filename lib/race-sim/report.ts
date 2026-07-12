@@ -51,16 +51,45 @@ export function buildRaceReport(input: {
   const placesGained = gridPosition > 0 ? gridPosition - me.position : 0;
   const won = me.position === 1;
 
-  const headline = won
-    ? "Winner."
-    : me.position <= 3
-      ? `${ordinal(me.position)} — on the podium.`
-      : `${ordinal(me.position)}.`;
+  // A retirement is the most important thing that can happen to you, so it
+  // leads — and it says WHY, because the point of the report is that you can do
+  // something about it next time.
+  const retirement = result.events.find(
+    (e) => e.type === "retirement" && e.carId === playerId
+  );
+
+  const headline = retirement
+    ? retirement.type === "retirement" && retirement.cause === "crash"
+      ? "Out. Into the barrier."
+      : "Out. The car let you down."
+    : won
+      ? "Winner."
+      : me.position <= 3
+        ? `${ordinal(me.position)} — on the podium.`
+        : `${ordinal(me.position)}.`;
 
   const notes: string[] = [];
 
-  // Did the drive itself gain or lose ground?
-  if (gridPosition > 0) {
+  if (retirement?.type === "retirement") {
+    if (retirement.cause === "crash") {
+      const cliffed = result.events.some(
+        (e) => e.type === "cliff" && e.carId === playerId && e.lap <= retirement.lap
+      );
+      notes.push(
+        cliffed
+          ? `You went off at ${retirement.zone} on lap ${retirement.lap} — and your tyres were already gone. A dead tyre has no grip under braking; that's how you end up in the gravel. Box before the cliff, not after it.`
+          : `You went off at ${retirement.zone} on lap ${retirement.lap}. Racing on the limit is how races are won, and occasionally how they end.`
+      );
+    } else {
+      notes.push(
+        `The car failed on lap ${retirement.lap}. Nothing you did — but a better-built car fails less often.`
+      );
+    }
+  }
+
+  // Did the drive itself gain or lose ground? Meaningless if you're in the
+  // barrier — you didn't lose two places, you lost the race.
+  if (gridPosition > 0 && !retirement) {
     if (placesGained > 0) {
       notes.push(
         `Started ${ordinal(gridPosition)} and gained ${placesGained} place${
@@ -119,6 +148,25 @@ export function buildRaceReport(input: {
     }
   }
 
+  // Moments — a lock-up costs you seconds AND flat-spots the tyre, so it keeps
+  // costing after the corner.
+  const lockups = result.events.filter(
+    (e) => e.type === "lockup" && e.carId === playerId
+  );
+  if (lockups.length === 1 && lockups[0].type === "lockup") {
+    notes.push(
+      `You locked up at ${lockups[0].zone} on lap ${lockups[0].lap} and lost ${lockups[0].timeLost.toFixed(1)}s — and flat-spotted the tyre, which kept costing you afterwards.`
+    );
+  } else if (lockups.length > 1) {
+    const lost = lockups.reduce(
+      (sum, e) => sum + (e.type === "lockup" ? e.timeLost : 0),
+      0
+    );
+    notes.push(
+      `You locked up ${lockups.length} times, throwing away ${lost.toFixed(1)}s. Pushing on worn tyres is how that happens.`
+    );
+  }
+
   // Wheel-to-wheel.
   const passesMade = result.events.filter(
     (e) => e.type === "overtake" && e.carId === playerId
@@ -138,10 +186,12 @@ export function buildRaceReport(input: {
     notes.push(`You ${parts.join(" and ")}.`);
   }
 
-  if (!won) {
+  if (!won && !retirement) {
     notes.push(
       `${winner.name} won it, ${me.gapToLeader.toFixed(1)}s up the road.`
     );
+  } else if (retirement) {
+    notes.push(`${winner.name} won it.`);
   }
 
   return {

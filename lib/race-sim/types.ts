@@ -87,6 +87,7 @@ export type CarFrame = {
   // crew upgrade is buying.
   pitProgress: number | null;
   finished: boolean;
+  retired: boolean;
 };
 
 export type Frame = {
@@ -94,9 +95,22 @@ export type Frame = {
   cars: CarFrame[];
 };
 
+export type RetirementCause = "crash" | "mechanical";
+
 export type RaceEvent =
   | { t: number; lap: number; type: "overtake"; carId: string; onCarId: string; zone: string }
   | { t: number; lap: number; type: "fastestLap"; carId: string; lapTime: number }
+  // A moment: locked up, ran wide, lost time. She carries on.
+  | { t: number; lap: number; type: "lockup"; carId: string; zone: string; timeLost: number }
+  // Race over.
+  | {
+      t: number;
+      lap: number;
+      type: "retirement";
+      carId: string;
+      cause: RetirementCause;
+      zone: string | null; // where she binned it; null for a mechanical
+    }
   | { t: number; lap: number; type: "defended"; carId: string; byCarId: string; zone: string }
   | { t: number; lap: number; type: "pit"; carId: string; to: CompoundId; duration: number }
   | { t: number; lap: number; type: "cliff"; carId: string } // tyres fell off the shelf
@@ -112,6 +126,7 @@ export type Classification = {
   laps: number;
   pitStops: number;
   bestLapTime: number | null;
+  retired: RetirementCause | null;
 };
 
 export type RaceInput = {

@@ -21,6 +21,7 @@ import type {
   RaceEvent,
   RaceInput,
   RaceResult,
+  RetirementCause,
   Track,
 } from "./types";
 
@@ -70,6 +71,26 @@ export type Tuning = {
 
   standingStartLoss: number; // seconds lost getting off the line on lap 1
   fuelLoadLoss: number; // seconds a full tank costs; burns off across the race
+
+  // Incidents. Base risk is per BRAKING ZONE — a lock-up happens under braking,
+  // which is also why an incident has a place name. The base is deliberately
+  // tiny and the multipliers are large: an incident should be something the
+  // player EARNED, not something that happened to them. A race lost to pure
+  // luck teaches nothing; a race lost to running dead tyres teaches everything.
+  incidentBase: number;
+  incidentConsistencyWeight: number; // how much a shaky driver adds
+  incidentPushMult: number; // on the limit
+  incidentCliffMult: number; // no grip under braking — THE consequence of the cliff
+  incidentDirtyAirMult: number; // wheel-to-wheel is where mistakes happen
+  incidentMajorShare: number; // of incidents, how many end the race
+  incidentMajorShareOnCliff: number; // a mistake on dead tyres is likelier terminal
+  lockupTimeLoss: [number, number]; // seconds lost in a moment
+  lockupFlatSpot: number; // extra wear from locking a wheel
+
+  // Mechanical failure, per lap. Pure car reliability, nothing to do with the
+  // driving — which is exactly what makes the reliability upgrade worth buying.
+  mechanicalBase: number;
+  mechanicalReliabilityWeight: number;
   baseCrewTime: number; // stationary seconds before pit-crew upgrades
   crewTimeSaving: number; // a maxed crew saves this much
   maxStops: number;
@@ -99,6 +120,24 @@ export const DEFAULT_TUNING: Tuning = {
   // speed from t=0, lap 1 is artificially the quickest lap of anyone's race, and
   // the fastest lap is therefore ALWAYS lap 1 — which is both wrong and dull.
   standingStartLoss: 2.5,
+
+  // More moments, same number of crashes: a lock-up is the best drama in the
+  // race — a mistake you SEE, that costs you seconds and flat-spots the tyre —
+  // and at the previous rate most races contained none at all. Raising the
+  // incident rate while lowering the share of them that end a race buys the
+  // moments without turning the game into a demolition derby.
+  incidentBase: 0.0015,
+  incidentConsistencyWeight: 2.0,
+  incidentPushMult: 1.5,
+  incidentCliffMult: 10.0,
+  incidentDirtyAirMult: 1.3,
+  incidentMajorShare: 0.08,
+  incidentMajorShareOnCliff: 0.25,
+  lockupTimeLoss: [1.5, 4.0],
+  lockupFlatSpot: 0.06,
+
+  mechanicalBase: 0.0003,
+  mechanicalReliabilityWeight: 8.0,
 
   // A full tank is heavy, and it burns off. Not a fifth system — it's a term in
   // lap time, like tyre wear, and it's the other half of why the purple lap
@@ -137,6 +176,7 @@ type CarState = {
   lastCrossT: number; // race time she last crossed the line
   lastLapTime: number | null;
   bestLapTime: number | null;
+  retired: RetirementCause | null;
   finished: boolean;
   finishTime: number;
   cliffAnnounced: boolean;
@@ -242,6 +282,48 @@ function shouldPit(
 
 function crewTime(state: CarState, tune: Tuning): number {
   return tune.baseCrewTime - tune.crewTimeSaving * (state.entrant.car.pitCrew / 100);
+}
+
+// How likely is this car to make a mistake in this braking zone?
+//
+// Almost all of it is circumstance, and circumstance is chosen: pushing hard,
+// racing in someone's dirty air, and above all running a tyre that has fallen
+// off the cliff — because a dead tyre has no grip under braking, which is
+// precisely how a driver locks a wheel and ends up in the gravel. This is what
+// finally gives the cliff teeth. Before, running past it only cost you seconds;
+// now it can cost you the race, which is what it costs in life.
+function incidentRisk(
+  state: CarState,
+  inDirtyAir: boolean,
+  tune: Tuning
+): number {
+  const { consistency } = state.entrant.driver;
+  let risk =
+    tune.incidentBase *
+    (1 + ((100 - consistency) / 100) * tune.incidentConsistencyWeight);
+  if (state.mode === "push") risk *= tune.incidentPushMult;
+  if (isOverCliff(COMPOUNDS[state.compound], state.wear)) {
+    risk *= tune.incidentCliffMult;
+  }
+  if (inDirtyAir) risk *= tune.incidentDirtyAirMult;
+  return risk;
+}
+
+// The car letting go, rather than the driver. Nothing to do with how she's
+// driving — this is the reliability rating, and the only defence is a better car.
+//
+// The curve is deliberately QUADRATIC, not linear. A linear one made a
+// reliability-25 shed retire 5.3% of the time against 4.3% for a good car —
+// a rounding error, which would have made the reliability upgrade worthless the
+// day we put it in the garage. Squaring it means a well-built car is genuinely
+// safe and a bad one is genuinely fragile, which is the only way the player ever
+// feels the money they spent.
+function mechanicalRisk(state: CarState, tune: Tuning): number {
+  const { reliability } = state.entrant.car;
+  const frailty = (100 - reliability) / 100;
+  return (
+    tune.mechanicalBase * (1 + frailty * frailty * tune.mechanicalReliabilityWeight)
+  );
 }
 
 // Did this car pass `position` on the lap during this tick? Handles wrapping
@@ -364,6 +446,7 @@ export function simulateRace(input: RaceInput): RaceResult {
     lastCrossT: 0,
     lastLapTime: null,
     bestLapTime: null,
+    retired: null,
     finished: false,
     finishTime: 0,
     cliffAnnounced: false,
@@ -376,18 +459,22 @@ export function simulateRace(input: RaceInput): RaceResult {
   let finishedCount = 0;
   let fastestLap: RaceResult["fastestLap"] = null;
 
-  // Race order. Finishing the distance beats being anywhere on track, and
-  // finishers are ranked by when they crossed — NOT by frozen progress, which
-  // is just wherever their final step happened to land.
+  // Race order. Out of the race is behind everyone still in it; finishing the
+  // distance beats being anywhere on track; and finishers are ranked by when
+  // they crossed — NOT by frozen progress, which is just wherever their final
+  // step happened to land.
   const order = () =>
     [...cars].sort((a, b) => {
+      if (a.retired && b.retired) return b.progress - a.progress;
+      if (a.retired) return 1;
+      if (b.retired) return -1;
       if (a.finished && b.finished) return a.finishTime - b.finishTime;
       if (a.finished) return -1;
       if (b.finished) return 1;
       return b.progress - a.progress;
     });
 
-  while (t < MAX_RACE_SECONDS && cars.some((c) => !c.finished)) {
+  while (t < MAX_RACE_SECONDS && cars.some((c) => !c.finished && !c.retired)) {
     const running = order();
 
     // 1. Serve pit stops. A stationary car makes no progress — which is exactly
@@ -406,7 +493,9 @@ export function simulateRace(input: RaceInput): RaceResult {
     // stopped dead on the straight, nose-to-tail, queueing behind a rival who
     // was in the pit box. It was visible on screen as cars parked on the flag,
     // and it was quietly distorting every race result.
-    const onTrack = running.filter((c) => !c.finished && c.pitTimer === 0);
+    const onTrack = running.filter(
+      (c) => !c.finished && !c.retired && c.pitTimer === 0
+    );
 
     // 2. Choose pace mode from each car's own pre-committed rules.
     for (let i = 0; i < onTrack.length; i++) {
@@ -430,7 +519,7 @@ export function simulateRace(input: RaceInput): RaceResult {
     const lapTimes = new Map<CarState, number>();
 
     for (const car of cars) {
-      if (car.finished) {
+      if (car.finished || car.retired) {
         proposed.set(car, car.progress);
         continue;
       }
@@ -518,13 +607,63 @@ export function simulateRace(input: RaceInput): RaceResult {
     // they happen to sit in the array is not the order they crossed the line.
     const finishedThisTick: CarState[] = [];
     for (const car of cars) {
-      if (car.finished) continue;
+      if (car.finished || car.retired) continue;
       const before = car.progress;
       const after = proposed.get(car)!;
       const advanced = Math.max(0, after - before);
       car.progress = after;
 
       if (car.pitTimer > 0) continue; // in the pits: no wear, no laps
+
+      // --- Something goes wrong ------------------------------------------
+      // Braking zones are where mistakes happen, which is why an incident has
+      // a place name. Rolled per zone crossed, so a lap with three heavy
+      // braking zones carries three chances to get it wrong.
+      const aheadOf = onTrack[onTrack.indexOf(car) - 1];
+      const lapNowFor = lapTimes.get(car) ?? track.baseLapTime;
+      const inDirty =
+        aheadOf !== undefined &&
+        (aheadOf.progress - car.progress) * lapNowFor <= tune.dirtyAirWindow;
+
+      for (const zone of track.zones) {
+        if (!crossedPosition(before, after, zone.position)) continue;
+        if (!rng.chance(incidentRisk(car, inDirty, tune))) continue;
+
+        const onDeadTyres = isOverCliff(COMPOUNDS[car.compound], car.wear);
+        const majorShare = onDeadTyres
+          ? tune.incidentMajorShareOnCliff
+          : tune.incidentMajorShare;
+
+        if (rng.chance(majorShare)) {
+          // Into the barrier. Race over.
+          car.retired = "crash";
+          events.push({
+            t,
+            lap: Math.floor(car.progress) + 1,
+            type: "retirement",
+            carId: car.entrant.id,
+            cause: "crash",
+            zone: zone.name,
+          });
+          break;
+        }
+
+        // A moment: locked a wheel, ran wide, lost time — and flat-spotted the
+        // tyre, so the mistake keeps costing after the corner.
+        const timeLost = rng.range(tune.lockupTimeLoss[0], tune.lockupTimeLoss[1]);
+        car.progress = Math.max(before, car.progress - timeLost / lapNowFor);
+        car.wear = Math.min(1, car.wear + tune.lockupFlatSpot);
+        events.push({
+          t,
+          lap: Math.floor(car.progress) + 1,
+          type: "lockup",
+          carId: car.entrant.id,
+          zone: zone.name,
+          timeLost,
+        });
+        break; // one moment per tick is plenty
+      }
+      if (car.retired) continue;
 
       if (advanced > 0) {
         car.wear = Math.min(
@@ -555,6 +694,21 @@ export function simulateRace(input: RaceInput): RaceResult {
         car.lapIndex = lapNow;
         rollLapNoise(car, rng, tune); // fresh scatter for the new lap
 
+        // The car itself letting go. Checked once a lap and driven purely by
+        // reliability — no amount of good driving saves you from a broken car.
+        if (lapNow < laps && rng.chance(mechanicalRisk(car, tune))) {
+          car.retired = "mechanical";
+          events.push({
+            t,
+            lap: lapNow,
+            type: "retirement",
+            carId: car.entrant.id,
+            cause: "mechanical",
+            zone: null,
+          });
+          continue;
+        }
+
         // Time the lap she just completed. The crossing is interpolated within
         // the tick for the same reason the finish is: a lap timed to the 0.5s
         // step boundary is a lap timed wrong, and these are the numbers the
@@ -575,13 +729,18 @@ export function simulateRace(input: RaceInput): RaceResult {
           }
           if (fastestLap === null || lapTime < fastestLap.lapTime) {
             fastestLap = { carId: car.entrant.id, lapTime, lap: lapNow };
-            events.push({
-              t: crossedAt,
-              lap: lapNow,
-              type: "fastestLap",
-              carId: car.entrant.id,
-              lapTime,
-            });
+            // The first lap anyone completes is trivially the fastest lap of the
+            // race so far, so announcing it is noise. The time is still recorded
+            // — someone always HOLDS the purple — it just isn't news yet.
+            if (lapNow > 1) {
+              events.push({
+                t: crossedAt,
+                lap: lapNow,
+                type: "fastestLap",
+                carId: car.entrant.id,
+                lapTime,
+              });
+            }
           }
         }
 
@@ -678,6 +837,7 @@ export function simulateRace(input: RaceInput): RaceResult {
               ? Math.min(1, Math.max(0, 1 - car.pitTimer / car.pitDuration))
               : null,
           finished: car.finished,
+          retired: car.retired !== null,
         };
       }),
     });
@@ -690,6 +850,8 @@ export function simulateRace(input: RaceInput): RaceResult {
   const finishers = cars
     .filter((c) => c.finished)
     .sort((a, b) => a.finishTime - b.finishTime);
+  // Anyone who didn't take the flag is classified behind those who did, and the
+  // further you got before it ended, the better you're classified — as in life.
   const rest = cars
     .filter((c) => !c.finished)
     .sort((a, b) => b.progress - a.progress);
@@ -706,6 +868,7 @@ export function simulateRace(input: RaceInput): RaceResult {
     laps: Math.max(0, Math.floor(car.progress)),
     pitStops: car.stops,
     bestLapTime: car.bestLapTime,
+    retired: car.retired,
   }));
 
   return {
