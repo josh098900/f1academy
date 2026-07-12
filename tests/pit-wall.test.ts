@@ -55,6 +55,48 @@ describe("stintPlan — the pit wall must not lie to the player", () => {
     }
   });
 
+  it("runs the ONE stop the plan describes — never a surprise second", () => {
+    // Josh fitted softs at the stop and got boxed AGAIN four laps later, while
+    // the whole field stopped once. A Strategy has one pit compound and one
+    // threshold: it describes one stop. The single pitAtWear rule was firing on
+    // the second stint too, and the pit wall had drawn a one-stop race — so the
+    // screen was lying about the plan he had just committed to.
+    for (const pitCompound of ["soft", "medium", "hard"] as const) {
+      const s = plan({ startCompound: "medium", pitCompound, pitAtWear: 0.6 });
+      const entrants = Array.from({ length: 8 }, (_, i) => ({
+        id: String(i + 1),
+        name: `d${i + 1}`,
+        driver: { pace: 70, racecraft: 60, consistency: 85 },
+        car: { power: 60, aero: 60, reliability: 60, pitCrew: 60 },
+        strategy: s,
+        isPlayer: i === 0,
+      }));
+      const track = getTrack(TRACK);
+      const grid = gridFromQualifying(entrants, track, 777);
+      const r = simulateRace({ track, laps: LAPS, entrants: grid, seed: 777 });
+      for (const c of r.classification) {
+        expect(c.pitStops).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it("warns when the tyre you FINISH on will not last", () => {
+    // You only get one stop. Fit softs with ten laps to run and they die — the
+    // screen has to say so before the lights, not after the flag.
+    const doomedFinish = plan({
+      startCompound: "medium",
+      pitCompound: "soft",
+      pitAtWear: 0.6,
+    });
+    const safeFinish = plan({
+      startCompound: "medium",
+      pitCompound: "hard",
+      pitAtWear: 0.6,
+    });
+    expect(stintPlan(doomedFinish, TRACK, LAPS).finalCliffLap).not.toBeNull();
+    expect(stintPlan(safeFinish, TRACK, LAPS).finalCliffLap).toBeNull();
+  });
+
   it("warns exactly when the plan runs past the cliff", () => {
     // Soft cliffs at 70% wear. Boxing at 60% is safe; boxing at 90% is not.
     const safe = plan({ startCompound: "soft", pitAtWear: 0.6 });

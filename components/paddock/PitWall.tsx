@@ -30,19 +30,36 @@ export function wearPerLap(compound: CompoundId, trackId: string): number {
   );
 }
 
-// Which lap this plan actually boxes on, and which lap the tyre falls off.
+// The whole plan: when you box, and when EITHER tyre falls off.
+//
+// You get one stop, so the stint you FINISH on matters as much as the one you
+// start on. Fit softs with ten laps to run and they will die and you will crawl
+// to the flag — and the screen has to tell you that before you commit, not after.
 export function stintPlan(
   strategy: Strategy,
   trackId: string,
   laps: number
-): { boxLap: number | null; cliffLap: number | null } {
+): {
+  boxLap: number | null;
+  cliffLap: number | null; // the tyre you start on
+  finalCliffLap: number | null; // the tyre you finish on
+} {
   const perLap = wearPerLap(strategy.startCompound, trackId);
   const rawBox = Math.ceil(strategy.pitAtWear / perLap);
   const rawCliff = Math.ceil(COMPOUNDS[strategy.startCompound].cliff / perLap);
   // The sim refuses a stop with under 3 laps left — it can only lose you time.
   const boxLap = rawBox <= laps - 3 ? rawBox : null;
   const cliffLap = rawCliff <= laps ? rawCliff : null;
-  return { boxLap, cliffLap };
+
+  // The stint you finish on starts fresh from the box.
+  let finalCliffLap: number | null = null;
+  if (boxLap !== null) {
+    const perLap2 = wearPerLap(strategy.pitCompound, trackId);
+    const lap = boxLap + Math.ceil(COMPOUNDS[strategy.pitCompound].cliff / perLap2);
+    finalCliffLap = lap <= laps ? lap : null;
+  }
+
+  return { boxLap, cliffLap, finalCliffLap };
 }
 
 export function TyrePicker({
@@ -165,10 +182,11 @@ export function StintPlan({
   trackId: string;
   laps: number;
 }) {
-  const { boxLap, cliffLap } = stintPlan(strategy, trackId, laps);
+  const { boxLap, cliffLap, finalCliffLap } = stintPlan(strategy, trackId, laps);
   const startColour = TYRE_COLOUR[strategy.startCompound];
   const endColour = TYRE_COLOUR[strategy.pitCompound];
   const runsPastCliff = cliffLap !== null && (boxLap === null || boxLap > cliffLap);
+  const finalTyreDies = finalCliffLap !== null;
 
   return (
     <div>
@@ -190,7 +208,9 @@ export function StintPlan({
         {Array.from({ length: laps }, (_, i) => {
           const lap = i + 1;
           const onFirstStint = boxLap === null || lap <= boxLap;
-          const pastCliff = cliffLap !== null && onFirstStint && lap > cliffLap;
+          const pastCliff = onFirstStint
+            ? cliffLap !== null && lap > cliffLap
+            : finalCliffLap !== null && lap > finalCliffLap;
           const isBox = boxLap === lap;
           return (
             <div key={lap} className="flex-1">
@@ -224,21 +244,24 @@ export function StintPlan({
         })}
       </div>
 
-      {/* The race engineer's verdict. */}
-      {runsPastCliff ? (
+      {/* The race engineer's verdict. ONE stop — so both tyres have to survive,
+          and the screen says which one won't. */}
+      {runsPastCliff || finalTyreDies ? (
         <p className="mt-2 flex items-start gap-2 border-l-2 border-danger bg-danger/[0.06] px-3 py-2 font-body text-xs text-danger">
           <span aria-hidden="true">▲</span>
           <span>
-            {boxLap === null
-              ? `No stop, and the ${COMPOUNDS[strategy.startCompound].label} falls off on lap ${cliffLap}. You'll crawl to the flag.`
-              : `You're running the ${COMPOUNDS[strategy.startCompound].label} to lap ${boxLap}, but it falls off on lap ${cliffLap}. That's ${boxLap - cliffLap} lap${boxLap - cliffLap === 1 ? "" : "s"} on dead tyres, losing seconds each.`}
+            {runsPastCliff
+              ? boxLap === null
+                ? `No stop, and the ${COMPOUNDS[strategy.startCompound].label} falls off on lap ${cliffLap}. You'll crawl to the flag.`
+                : `You run the ${COMPOUNDS[strategy.startCompound].label} to lap ${boxLap}, but it falls off on lap ${cliffLap} — ${boxLap - cliffLap} lap${boxLap - cliffLap === 1 ? "" : "s"} on dead tyres, losing seconds each.`
+              : `You box on lap ${boxLap}, but the ${COMPOUNDS[strategy.pitCompound].label} won't last: it falls off on lap ${finalCliffLap} and you have to bring it home. Fit something harder, or box later.`}
           </span>
         </p>
       ) : (
         <p className="mt-2 border-l-2 border-border-strong px-3 py-2 font-body text-xs text-secondary">
           {boxLap === null
             ? `No stop — the ${COMPOUNDS[strategy.startCompound].label} goes the distance. Slower, but you never lose the time in the pit lane.`
-            : `Clean plan. You box on lap ${boxLap} with life left in the ${COMPOUNDS[strategy.startCompound].label}, and finish on the ${COMPOUNDS[strategy.pitCompound].label}.`}
+            : `Clean plan. You box on lap ${boxLap} with life left in the ${COMPOUNDS[strategy.startCompound].label}, and the ${COMPOUNDS[strategy.pitCompound].label} sees you to the flag.`}
         </p>
       )}
     </div>
