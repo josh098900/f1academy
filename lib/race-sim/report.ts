@@ -167,12 +167,13 @@ export function buildRaceReport(input: {
     );
   }
 
-  // Wheel-to-wheel.
+  // Wheel-to-wheel. Blue-flag passes are excluded on both sides: lapping a
+  // backmarker isn't a fight you won, and being waved past isn't one you lost.
   const passesMade = result.events.filter(
-    (e) => e.type === "overtake" && e.carId === playerId
+    (e) => e.type === "overtake" && e.carId === playerId && !e.lapping
   ).length;
   const passedBy = result.events.filter(
-    (e) => e.type === "overtake" && e.onCarId === playerId
+    (e) => e.type === "overtake" && e.onCarId === playerId && !e.lapping
   ).length;
 
   if (passesMade > 0 || passedBy > 0) {

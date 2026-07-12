@@ -493,8 +493,8 @@ export function RaceViewer({ result, entrants, trackId, onFinish }: Props) {
                   <span className="text-muted">L{e.lap}</span>{" "}
                   {e.type === "overtake" ? (
                     <>
-                      <span className="text-primary">{nameOf(e.carId)}</span> passes{" "}
-                      {nameOf(e.onCarId)} at {e.zone}
+                      <span className="text-primary">{nameOf(e.carId)}</span>{" "}
+                      {e.lapping ? "laps" : "passes"} {nameOf(e.onCarId)} at {e.zone}
                     </>
                   ) : e.type === "pit" ? (
                     <>

@@ -69,6 +69,13 @@ export type Tuning = {
   minPass: number;
   maxPass: number;
 
+  // Blue flags. A car being LAPPED is not racing the car catching it: she
+  // yields at the next passing place instead of defending. High, not certain —
+  // so traffic still costs the lapping car a moment, which is what it costs in
+  // life. A failed wave-by is not a lunge: no time lost, no "defended" event,
+  // just another zone spent in her wake.
+  blueFlagPassChance: number;
+
   standingStartLoss: number; // seconds lost getting off the line on lap 1
   fuelLoadLoss: number; // seconds a full tank costs; burns off across the race
 
@@ -115,6 +122,8 @@ export const DEFAULT_TUNING: Tuning = {
   wPower: 0.2,
   minPass: 0.03,
   maxPass: 0.85,
+
+  blueFlagPassChance: 0.9,
 
   // Getting off the line from a standstill. Without it, cars are at full racing
   // speed from t=0, lap 1 is artificially the quickest lap of anyone's race, and
@@ -327,6 +336,12 @@ function mechanicalRisk(state: CarState, tune: Tuning): number {
   );
 }
 
+// Where on the circuit a car physically is: its position around the current
+// lap, 0→1. Total progress measures the RACE; this measures the ROAD.
+function roadPosition(progress: number): number {
+  return ((progress % 1) + 1) % 1;
+}
+
 // Did this car pass `position` on the lap during this tick? Handles wrapping
 // across the start/finish line.
 function crossedPosition(prev: number, next: number, position: number): boolean {
@@ -469,6 +484,9 @@ export function simulateRace(input: RaceInput): RaceResult {
   // untouched; this only changes where the numbers are kept.
   const running: CarState[] = [...cars];
   const onTrack: CarState[] = [];
+  const roadOrder: CarState[] = [];
+  const roadPos = new Array<number>(cars.length).fill(0);
+  const roadAhead = new Array<CarState | null>(cars.length).fill(null);
   const proposed = new Array<number>(cars.length).fill(0);
   const lapTimes = new Array<number>(cars.length).fill(track.baseLapTime);
   const finishedThisTick: CarState[] = [];
@@ -527,7 +545,49 @@ export function simulateRace(input: RaceInput): RaceResult {
       if (!c.finished && !c.retired && c.pitTimer === 0) onTrack.push(c);
     }
 
-    // 2. Choose pace mode from each car's own pre-committed rules.
+    // Road order: who is physically ahead of whom on the racing line, from
+    // each car's position around the LAP — not its race progress. The two
+    // agree right up until someone is about to be lapped, and then they don't:
+    // a leader catching a backmarker is a whole lap ahead in RACE terms and
+    // two car lengths behind in ROAD terms. Dirty air, blocking and overtaking
+    // are physics, and physics happens on the road — computed against race
+    // order they cannot see a lapping encounter at all, and the leader drives
+    // clean through the backmarker's car. (Unreachable in a short race whose
+    // field never spreads a full lap; the safety car makes it routine, because
+    // bunching the field is exactly how leaders end up in traffic.)
+    //
+    // A circle has no first car, so the "head" is the car with the most clear
+    // road in front of it. In a same-lap race that is precisely the race
+    // leader, and blocking resolves front-to-back in race order as it always
+    // did — this layer changes nothing until the moment somebody gets lapped.
+    roadOrder.length = 0;
+    for (const c of onTrack) {
+      roadPos[c.index] = roadPosition(c.progress);
+      roadOrder.push(c);
+    }
+    roadOrder.sort(
+      (a, b) => roadPos[b.index] - roadPos[a.index] || a.index - b.index
+    );
+    let head = 0;
+    {
+      const n = roadOrder.length;
+      let widest = -1;
+      for (let i = 0; i < n; i++) {
+        const aheadCar = roadOrder[(i - 1 + n) % n];
+        roadAhead[roadOrder[i].index] = n >= 2 ? aheadCar : null;
+        if (n < 2) continue;
+        const gap =
+          (roadPos[aheadCar.index] - roadPos[roadOrder[i].index] + 1) % 1;
+        if (gap > widest) {
+          widest = gap;
+          head = i;
+        }
+      }
+    }
+
+    // 2. Choose pace mode from each car's own pre-committed rules. This stays
+    // in RACE order deliberately: attack and defence are about POSITION — you
+    // push to take P3 or to keep it, not to fend off a car a lap down.
     for (let i = 0; i < onTrack.length; i++) {
       const car = onTrack[i];
       const ahead = onTrack[i - 1];
@@ -557,12 +617,13 @@ export function simulateRace(input: RaceInput): RaceResult {
       }
     }
 
-    for (let i = 0; i < onTrack.length; i++) {
-      const car = onTrack[i];
-      const ahead = onTrack[i - 1];
+    for (const car of onTrack) {
+      // Dirty air is a wake, and a wake doesn't care what lap the car making
+      // it is on — so the gap here is road distance, not race distance.
+      const ahead = roadAhead[car.index];
       const roughLap = lapTimeFor(car, track, false, tune, laps);
       const gapAhead = ahead
-        ? (ahead.progress - car.progress) * roughLap
+        ? ((roadPos[ahead.index] - roadPos[car.index] + 1) % 1) * roughLap
         : Infinity;
       const inDirtyAir = gapAhead <= tune.dirtyAirWindow;
 
@@ -571,13 +632,25 @@ export function simulateRace(input: RaceInput): RaceResult {
       proposed[car.index] = car.progress + DT / lap;
     }
 
-    // 4. Blocking + overtakes, among the cars actually on the racing line.
-    for (let i = 1; i < onTrack.length; i++) {
-      const car = onTrack[i];
-      const ahead = onTrack[i - 1];
+    // 4. Blocking + overtakes, resolved front-to-back along the ROAD from the
+    // head of the queue, so a slow car genuinely holds up everyone behind it
+    // — including, now, a backmarker holding up the leader about to lap her.
+    for (let k = 1; k < roadOrder.length; k++) {
+      const n = roadOrder.length;
+      const car = roadOrder[(head + k) % n];
+      const ahead = roadOrder[(head + k - 1) % n];
+
+      // Bring the car ahead into this car's lap frame. On the same lap this
+      // changes nothing; when she is a whole lap down (or up), it shifts her
+      // progress by that lap so everything below stays a plain comparison of
+      // positions on the road. Within blocking range the two cars are inches
+      // apart on the circuit, so the progress difference is always within a
+      // whisker of a whole number and the rounding is unambiguous.
+      const lapsApart = Math.round(car.progress - ahead.progress);
+      const aheadNow = ahead.progress + lapsApart;
+      const aheadNext = proposed[ahead.index] + lapsApart;
 
       const carNext = proposed[car.index];
-      const aheadNext = proposed[ahead.index];
       const lap = lapTimes[car.index];
       const buffer = tune.carLengthSeconds / lap; // in laps
 
@@ -585,23 +658,45 @@ export function simulateRace(input: RaceInput): RaceResult {
       if (carNext < aheadNext - buffer) continue; // clear air, carry on
 
       // It's on the gearbox. Is it at a passing place, and close enough?
-      const gapNow = (ahead.progress - car.progress) * lap;
+      const gapNow = (aheadNow - car.progress) * lap;
       const zone = track.zones.find((z) =>
         crossedPosition(car.progress, carNext, z.position)
       );
 
+      // Blue flags: a car a whole lap ahead of the one in front is LAPPING
+      // her, not racing her — and the backmarker's job is to get out of the
+      // way, not to defend a position she doesn't hold.
+      const lapping = lapsApart >= 1;
+
       if (zone && gapNow <= tune.overtakeWindow) {
-        const p = passProbability(
-          car,
-          ahead,
-          lap,
-          lapTimes[ahead.index],
-          zone.difficulty,
-          tune
-        );
+        const p = lapping
+          ? tune.blueFlagPassChance
+          : passProbability(
+              car,
+              ahead,
+              lap,
+              lapTimes[ahead.index],
+              zone.difficulty,
+              tune
+            );
         if (rng.chance(p)) {
-          // Through. Take the position: slot in a car length ahead.
-          proposed[car.index] = aheadNext + buffer;
+          // Through. Take the position: slot in a car length ahead — but
+          // never through the NEXT car up the road. In a nose-to-tail train
+          // the cars sit exactly a buffer apart, so a full car-length slot-in
+          // landed ON the following car and the sort's tie-break quietly
+          // handed over a second position for one dice roll. Passing into a
+          // train beats ONE car: land in the gap, on the next gearbox.
+          let slot = aheadNext + buffer;
+          if (k >= 2) {
+            const beyond = roadOrder[(head + k - 2 + n) % n];
+            const beyondNext =
+              proposed[beyond.index] +
+              Math.round(car.progress - beyond.progress);
+            if (beyondNext > aheadNext) {
+              slot = Math.min(slot, (aheadNext + beyondNext) / 2);
+            }
+          }
+          proposed[car.index] = slot;
           events.push({
             t,
             lap: Math.max(0, Math.floor(car.progress)) + 1,
@@ -609,20 +704,25 @@ export function simulateRace(input: RaceInput): RaceResult {
             carId: car.entrant.id,
             onCarId: ahead.entrant.id,
             zone: zone.name,
+            ...(lapping ? { lapping: true } : {}),
           });
           continue;
         }
-        // Rebuffed: lost momentum, and still stuck behind.
-        events.push({
-          t,
-          lap: Math.max(0, Math.floor(car.progress)) + 1,
-          type: "defended",
-          carId: ahead.entrant.id,
-          byCarId: car.entrant.id,
-          zone: zone.name,
-        });
-        proposed[car.index] = aheadNext - buffer - tune.failedPassCost / lap;
-        continue;
+        if (!lapping) {
+          // Rebuffed: lost momentum, and still stuck behind.
+          events.push({
+            t,
+            lap: Math.max(0, Math.floor(car.progress)) + 1,
+            type: "defended",
+            carId: ahead.entrant.id,
+            byCarId: car.entrant.id,
+            zone: zone.name,
+          });
+          proposed[car.index] = aheadNext - buffer - tune.failedPassCost / lap;
+          continue;
+        }
+        // A missed wave-by is not a failed lunge: no time lost, no glory for
+        // the backmarker — just another zone spent in her wake.
       }
 
       // No way past here — sit in the dirty air and wait for a zone.
@@ -647,11 +747,12 @@ export function simulateRace(input: RaceInput): RaceResult {
       // Braking zones are where mistakes happen, which is why an incident has
       // a place name. Rolled per zone crossed, so a lap with three heavy
       // braking zones carries three chances to get it wrong.
-      const aheadOf = onTrack[onTrack.indexOf(car) - 1];
+      const aheadOf = roadAhead[car.index];
       const lapNowFor = lapTimes[car.index];
       const inDirty =
-        aheadOf !== undefined &&
-        (aheadOf.progress - car.progress) * lapNowFor <= tune.dirtyAirWindow;
+        aheadOf !== null &&
+        ((roadPos[aheadOf.index] - roadPos[car.index] + 1) % 1) * lapNowFor <=
+          tune.dirtyAirWindow;
 
       for (const zone of track.zones) {
         if (!crossedPosition(before, after, zone.position)) continue;

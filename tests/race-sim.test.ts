@@ -5,6 +5,7 @@ import {
   type CarStats,
   type DriverStats,
   type Entrant,
+  type RaceEvent,
   type Strategy,
   Rng,
   getTrack,
@@ -658,4 +659,143 @@ describe("simulateRace — track character", () => {
     };
     expect(passesPerRace("vegas")).toBeGreaterThan(passesPerRace("zandvoort") * 2);
   }, STATS_TIMEOUT);
+});
+
+describe("simulateRace — lapping and blue flags", () => {
+  // Lapping cannot happen in a standard 15-lap race — the field never spreads
+  // a full lap — so this scenario forces it: pace weights amplified until one
+  // car gains ~8s a lap on a slow field, over a distance long enough to go a
+  // lap up. Incidents and mechanicals are switched off so the only physics in
+  // play is the physics under test. This is the safety car's prerequisite:
+  // bunching the field is exactly how a leader ends up in traffic, and until
+  // this layer existed she drove clean through it.
+  const LAPPING_TUNING = {
+    paceWeight: 0.05,
+    carWeight: 0.05,
+    incidentBase: 0,
+    mechanicalBase: 0,
+  };
+  const BACKMARKERS = ["bm-1", "bm-2", "bm-3", "bm-4", "bm-5"];
+
+  function lappingRace(seed: number) {
+    const rocket = entrant("rocket", {
+      driver: driver({ pace: 100, consistency: 100 }),
+      car: car({ power: 100, aero: 100, reliability: 100 }),
+      strategy: strategy({
+        startCompound: "hard",
+        pitAtWear: 2, // never boxes — the tyre economy is not under test
+        conserveWhenLeadingBy: 999, // never lifts, either
+      }),
+    });
+    const field = BACKMARKERS.map((id) =>
+      entrant(id, {
+        driver: driver({ pace: 10, consistency: 100 }),
+        car: car({ power: 10, aero: 10, reliability: 100 }),
+        strategy: strategy({ startCompound: "hard", pitAtWear: 2 }),
+      })
+    );
+    return simulateRace({
+      track: getTrack("montreal"),
+      laps: 18,
+      entrants: [rocket, ...field],
+      seed,
+      tuning: LAPPING_TUNING,
+    });
+  }
+
+  it("laps the field with blue-flag passes, not ghosts", () => {
+    const result = lappingRace(42);
+
+    expect(result.classification[0].id).toBe("rocket");
+    const blueFlags = result.events.filter(
+      (e): e is Extract<RaceEvent, { type: "overtake" }> =>
+        e.type === "overtake" && e.lapping === true
+    );
+
+    // The invariant is physical: you cannot finish a whole lap ahead of a car
+    // you never drove past. So: everyone more than a lap down at the moment
+    // the rocket took the flag MUST have been waved by on the road. (Not
+    // "everyone got lapped" — on this seed one backmarker was only 0.9 laps
+    // down at the flag and survived un-lapped, which is racing, not a bug.)
+    const rocketFinish = result.classification[0].totalTime;
+    let atFlag = result.frames[0];
+    for (const f of result.frames) {
+      if (f.t <= rocketFinish) atFlag = f;
+    }
+    let lapped = 0;
+    for (const bm of BACKMARKERS) {
+      const c = atFlag.cars.find((x) => x.id === bm)!;
+      const lapsDown = result.laps - (c.lap + c.lapPosition);
+      if (lapsDown < 1.05) continue; // never fully caught
+      lapped += 1;
+      expect(
+        blueFlags.some((e) => e.carId === "rocket" && e.onCarId === bm)
+      ).toBe(true);
+    }
+    // And the scenario did real work: most of the field genuinely went a lap
+    // down.
+    expect(lapped).toBeGreaterThanOrEqual(3);
+  });
+
+  it("never lets one car drive through another — every road swap is a pass", () => {
+    // The regression this whole layer exists to prevent: with proximity
+    // computed from race progress, a lapping encounter was invisible and the
+    // leader passed straight through the backmarker's car. So: replay the
+    // race frame by frame, and any time two on-track cars swap places on the
+    // ROAD, there must be an overtake event between them in that window.
+    const result = lappingRace(7);
+    const passes = result.events.filter(
+      (e): e is Extract<RaceEvent, { type: "overtake" }> =>
+        e.type === "overtake"
+    );
+    const frames = result.frames;
+
+    for (let f = 1; f < frames.length; f++) {
+      const prev = frames[f - 1];
+      const now = frames[f];
+      for (let a = 0; a < now.cars.length; a++) {
+        for (let b = a + 1; b < now.cars.length; b++) {
+          const pa = prev.cars[a];
+          const pb = prev.cars[b];
+          const na = now.cars[a];
+          const nb = now.cars[b];
+          if (pa.inPit || pb.inPit || na.inPit || nb.inPit) continue;
+          if (pa.finished || pb.finished || na.finished || nb.finished) continue;
+          if (na.retired || nb.retired) continue;
+
+          // Signed road gap a→b; a swap shows up as a wrap across 0.
+          const before = (pa.lapPosition - pb.lapPosition + 1) % 1;
+          const after = (na.lapPosition - nb.lapPosition + 1) % 1;
+          if (Math.abs(after - before) <= 0.5) continue; // drifted, not swapped
+
+          const explained = passes.some(
+            (e) =>
+              e.t > prev.t &&
+              e.t <= now.t &&
+              ((e.carId === na.id && e.onCarId === nb.id) ||
+                (e.carId === nb.id && e.onCarId === na.id))
+          );
+          expect(explained).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("has the backmarker yield, never defend, against the car lapping her", () => {
+    const result = lappingRace(21);
+    // The rocket starts on pole and is never overtaken, so any "defence"
+    // against her could only be a backmarker fighting the car lapping her —
+    // which blue flags exist to forbid.
+    const defences = result.events.filter(
+      (e) => e.type === "defended" && e.byCarId === "rocket"
+    );
+    expect(defences).toHaveLength(0);
+  });
+
+  it("is deterministic through traffic — same seed, same race", () => {
+    const a = lappingRace(5);
+    const b = lappingRace(5);
+    expect(a.events).toEqual(b.events);
+    expect(a.classification).toEqual(b.classification);
+  });
 });

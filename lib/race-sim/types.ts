@@ -98,7 +98,9 @@ export type Frame = {
 export type RetirementCause = "crash" | "mechanical";
 
 export type RaceEvent =
-  | { t: number; lap: number; type: "overtake"; carId: string; onCarId: string; zone: string }
+  // `lapping` marks a blue-flag pass — carId went a lap up on onCarId, who
+  // yielded rather than defended. It's traffic, not a fight for position.
+  | { t: number; lap: number; type: "overtake"; carId: string; onCarId: string; zone: string; lapping?: boolean }
   | { t: number; lap: number; type: "fastestLap"; carId: string; lapTime: number }
   // A moment: locked up, ran wide, lost time. She carries on.
   | { t: number; lap: number; type: "lockup"; carId: string; zone: string; timeLost: number }
