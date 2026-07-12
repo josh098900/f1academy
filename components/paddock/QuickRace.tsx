@@ -11,6 +11,7 @@ import {
   type Entrant,
   Rng,
   type Strategy,
+  type Tuning,
   buildRaceReport,
   getTrack,
   simulateQualifying,
@@ -76,6 +77,17 @@ function npcStrategy(rng: Rng): Strategy {
   };
 }
 
+// The shakedown switch: add ?safetycar to the URL and every race runs on
+// crash-prone tuning with a guaranteed deployment, so the safety car can be
+// WATCHED on demand instead of waiting for the dice (it appears in ~11% of
+// normal races). Test tuning, not the game: without the URL flag, races run
+// the real balance untouched.
+const SHAKEDOWN_TUNING: Partial<Tuning> = {
+  incidentBase: 0.008,
+  incidentMajorShare: 0.35,
+  scDeployChance: 1,
+};
+
 type Phase = "setup" | "quali" | "race";
 
 const COMPOUND_LABEL = { soft: "Soft", medium: "Medium", hard: "Hard" } as const;
@@ -105,6 +117,7 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
     driverId: number;
     strategy: Strategy;
     seed: number;
+    shakedown: boolean;
   } | null>(null);
 
   const race = useMemo(() => {
@@ -150,6 +163,7 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
       laps: LAPS,
       entrants: grid,
       seed: committed.seed,
+      tuning: committed.shakedown ? SHAKEDOWN_TUNING : undefined,
     });
     const report = buildRaceReport({
       result,
@@ -170,8 +184,18 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
 
   function startRace() {
     // The seed is minted here, not during render: Math.random() in a useState
-    // initializer runs on the server AND the client and disagrees.
-    setCommitted({ driverId, strategy, seed: Math.floor(Math.random() * 1e9) });
+    // initializer runs on the server AND the client and disagrees. The URL is
+    // read here too — a click handler only ever runs in the browser, so there
+    // is no server/client disagreement to hydrate wrongly.
+    const shakedown = new URLSearchParams(window.location.search).has(
+      "safetycar"
+    );
+    setCommitted({
+      driverId,
+      strategy,
+      seed: Math.floor(Math.random() * 1e9),
+      shakedown,
+    });
     setShowResult(false);
     setPhase("quali");
   }
@@ -337,6 +361,11 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
           {me.shortName} · qualified{" "}
           <span className="text-accent">P{myGrid}</span> · Silverstone
         </p>
+        {committed?.shakedown && (
+          <span className="border border-warning/50 px-2 py-0.5 font-mono text-[10px] tracking-wider text-warning uppercase">
+            Shakedown · safety car armed
+          </span>
+        )}
         <button
           type="button"
           onClick={raceAgain}
