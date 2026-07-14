@@ -1,7 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-
 import {
   type PaddockRaceSettlement,
   settleQuickRace,
@@ -12,11 +10,15 @@ import type { Strategy } from "@/lib/race-sim";
 // race, and banks the payout before the browser has drawn a single frame —
 // see lib/paddock/settle.ts for the trust model. The browser then replays
 // the identical race from the returned seed.
+//
+// Deliberately NO revalidatePath here: the settlement happens at lights out,
+// but revalidating would update the page's coin balance and race history
+// while the player is still watching qualifying — announcing the finishing
+// position of a race they haven't seen yet. The client refreshes the page
+// data when the chequered flag drops on the replay instead.
 export async function runPaddockRace(input: {
   driverId: number;
   strategy: Strategy;
 }): Promise<PaddockRaceSettlement> {
-  const result = await settleQuickRace(input.driverId, input.strategy);
-  if (result.ok) revalidatePath("/paddock");
-  return result;
+  return settleQuickRace(input.driverId, input.strategy);
 }

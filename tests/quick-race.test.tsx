@@ -6,6 +6,13 @@ import { describe, expect, it, vi } from "vitest";
 import { QuickRace } from "../components/paddock/QuickRace";
 import type { RatedDriver } from "../lib/paddock/ratings";
 
+// QuickRace refreshes the page's server data when the flag drops (the coin
+// balance is deliberately stale until then); there is no app router mounted
+// in jsdom, so stub it.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+
 // A believable field: one clear front-runner, a midfield, and a backmarker.
 const DRIVERS: RatedDriver[] = [
   { driverId: 1, name: "Alisha Palmowski", shortName: "A. Palmowski", stats: { pace: 75, racecraft: 71, consistency: 85 } },
