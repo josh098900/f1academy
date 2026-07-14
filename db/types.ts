@@ -381,6 +381,45 @@ export type Database = {
           },
         ]
       }
+      reminder_log: {
+        Row: {
+          id: number
+          kind: string
+          round_id: number
+          sent_at: string
+          user_id: string
+        }
+        Insert: {
+          id?: number
+          kind: string
+          round_id: number
+          sent_at?: string
+          user_id: string
+        }
+        Update: {
+          id?: number
+          kind?: string
+          round_id?: number
+          sent_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reminder_log_round_id_fkey"
+            columns: ["round_id"]
+            isOneToOne: false
+            referencedRelation: "rounds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reminder_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rounds: {
         Row: {
           circuit_name: string | null
@@ -789,45 +828,6 @@ export type Database = {
             columns: ["favourite_team_id"]
             isOneToOne: false
             referencedRelation: "teams"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      reminder_log: {
-        Row: {
-          id: number
-          kind: string
-          round_id: number
-          sent_at: string
-          user_id: string
-        }
-        Insert: {
-          id?: number
-          kind: string
-          round_id: number
-          sent_at?: string
-          user_id: string
-        }
-        Update: {
-          id?: number
-          kind?: string
-          round_id?: number
-          sent_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "reminder_log_round_id_fkey"
-            columns: ["round_id"]
-            isOneToOne: false
-            referencedRelation: "rounds"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reminder_log_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
