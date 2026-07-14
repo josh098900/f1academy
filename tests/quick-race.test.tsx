@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { QuickRace } from "../components/paddock/QuickRace";
 import type { RatedDriver } from "../lib/paddock/ratings";
@@ -117,5 +117,30 @@ describe("QuickRace — the pit wall", () => {
     expect(screen.getByRole("button", { name: /new race/i })).toBeInTheDocument();
     // The timing tower is live.
     expect(screen.getByText(/^LEADER$/)).toBeInTheDocument();
+  });
+
+  it("banks the race through the server when a hookup exists", async () => {
+    // The server mints the seed and settles the payout; the component must
+    // send the committed plan and race on the seed it gets back. (Without
+    // the hookup — every other test here — it races locally, unpaid.)
+    const user = userEvent.setup();
+    const runRace = vi.fn(async () => ({
+      ok: true as const,
+      seed: 424242,
+      coinsEarned: 100,
+      balance: 260,
+    }));
+    render(<QuickRace drivers={DRIVERS} runRace={runRace} />);
+    await user.click(screen.getByRole("button", { name: /lights out/i }));
+
+    expect(await screen.findByText(/qualifying/i)).toBeInTheDocument();
+    expect(runRace).toHaveBeenCalledTimes(1);
+    expect(runRace).toHaveBeenCalledWith({
+      driverId: 1, // the top-ranked driver is the default pick
+      strategy: expect.objectContaining({
+        startCompound: "medium",
+        boxUnderSafetyCar: true,
+      }),
+    });
   });
 });

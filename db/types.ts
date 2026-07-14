@@ -271,6 +271,116 @@ export type Database = {
           },
         ]
       }
+      paddock_races: {
+        Row: {
+          coins_earned: number
+          created_at: string
+          driver_id: number
+          finish_position: number
+          grid_position: number
+          id: number
+          laps: number
+          retired: string | null
+          seed: number
+          strategy: Json
+          track_id: string
+          user_id: string
+        }
+        Insert: {
+          coins_earned: number
+          created_at?: string
+          driver_id: number
+          finish_position: number
+          grid_position: number
+          id?: never
+          laps: number
+          retired?: string | null
+          seed: number
+          strategy: Json
+          track_id: string
+          user_id: string
+        }
+        Update: {
+          coins_earned?: number
+          created_at?: string
+          driver_id?: number
+          finish_position?: number
+          grid_position?: number
+          id?: never
+          laps?: number
+          retired?: string | null
+          seed?: number
+          strategy?: Json
+          track_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paddock_races_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "drivers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paddock_races_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paddock_teams: {
+        Row: {
+          car_aero: number
+          car_pit_crew: number
+          car_power: number
+          car_reliability: number
+          coins: number
+          created_at: string
+          eng_data_analyst: number
+          eng_race_engineer: number
+          eng_simulator: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          car_aero?: number
+          car_pit_crew?: number
+          car_power?: number
+          car_reliability?: number
+          coins?: number
+          created_at?: string
+          eng_data_analyst?: number
+          eng_race_engineer?: number
+          eng_simulator?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          car_aero?: number
+          car_pit_crew?: number
+          car_power?: number
+          car_reliability?: number
+          coins?: number
+          created_at?: string
+          eng_data_analyst?: number
+          eng_race_engineer?: number
+          eng_simulator?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paddock_teams_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rounds: {
         Row: {
           circuit_name: string | null
@@ -753,6 +863,21 @@ export type Database = {
           total: number
           user_id: string
         }[]
+      }
+      settle_paddock_race: {
+        Args: {
+          p_coins: number
+          p_driver_id: number
+          p_finish_position: number
+          p_grid_position: number
+          p_laps: number
+          p_retired?: string
+          p_seed: number
+          p_strategy: Json
+          p_track_id: string
+          p_user_id: string
+        }
+        Returns: number
       }
       shares_league_with: { Args: { target: string }; Returns: boolean }
     }
