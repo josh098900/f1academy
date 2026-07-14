@@ -146,6 +146,28 @@ So the Layer-1 proxy for its DB cost needs a real user token:
 (granted **`authenticated` only**). Non-members get `notFound()`. Also mounts
 `<RealtimeRefresh>`.
 
+### 6a. The Paddock (added 2026-07-15) — new surface, outside the deadline-hour journey
+
+The racing game's progression added traffic that no deadline-hour scenario
+covers (it's a game surface, not a deadline behaviour — no scenario change
+needed, recorded for completeness):
+
+- `GET /paddock` (Layer 2, Server Component) now also reads
+  `paddock_teams` (own row) and `paddock_races` (own rows, limit 5) —
+  per-user, uncached, RLS `select`-only.
+- **`runPaddockRace` server action** (Layer 3, `POST /paddock` with
+  `Next-Action` header): authenticates, re-reads season ratings, runs the
+  deterministic race sim server-side (~5ms, no frames), then calls the
+  **service-role-only RPC `settle_paddock_race`** (atomic coins + race log).
+  Same replayability caveats as `saveTeam` (§5) — and the same Option-B
+  pattern applies if its cost ever needs attribution. Expect its latency
+  profile to resemble the real save: ~20ms `getUser()` + a few reads + one
+  RPC write, plus the sim's ~5ms.
+- `paddock_teams` / `paddock_races` have **no authenticated write path** —
+  a PostgREST write attempt with a player Bearer token should 401/403; the
+  RPC is revoked from `authenticated` entirely. (Worth a one-off curl check
+  on staging, like the leaderboard RPC verification above.)
+
 ### 6. Realtime — out of gridload scope, but note the load
 
 Every leaderboard/league page mounts `<RealtimeRefresh>`

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 
 import {
   PitWallSlider,
@@ -11,17 +11,15 @@ import {
 import { Qualifying } from "@/components/paddock/Qualifying";
 import { RaceViewer } from "@/components/paddock/RaceViewer";
 import { Button } from "@/components/ui/button";
-import type { RatedDriver } from "@/lib/paddock/ratings";
 import {
-  type Entrant,
-  Rng,
-  type Strategy,
-  type Tuning,
-  buildRaceReport,
-  getTrack,
-  simulateQualifying,
-  simulateRace,
-} from "@/lib/race-sim";
+  PADDOCK_LAPS,
+  PADDOCK_TRACK_ID,
+  rankDrivers,
+  runQuickRace,
+} from "@/lib/paddock/field";
+import type { RatedDriver } from "@/lib/paddock/ratings";
+import type { PaddockRaceSettlement } from "@/lib/paddock/settle";
+import { type Strategy, type Tuning } from "@/lib/race-sim";
 
 // Quick Race — the first thing here you can actually play.
 //
@@ -30,18 +28,11 @@ import {
 // decisions playing out rather than your reflexes. Everything else — the grid,
 // the tyres going off, the pass into Stowe — follows from it.
 //
-// The entire race is a function of (driver, strategy, seed), so nothing is
-// stored: press Race, and the deterministic sim produces the same 15 laps every
-// time. The garage, where the car itself becomes yours, is next.
-
-const TRACK_ID = "silverstone"; // the only circuit with a racing line so far
-const LAPS = 15;
-const FIELD = 8;
-
-// Identical machinery for everyone, so this race is decided by the driver you
-// picked and the plan you wrote — not by who has the better car. That changes
-// when the garage lands.
-const STOCK_CAR = { power: 60, aero: 60, reliability: 60, pitCrew: 60 };
+// The race itself is built in lib/paddock/field.ts, because it now runs twice:
+// once on the server, which mints the seed and banks the coins, and once here,
+// where the identical race is replayed as the broadcast. When no server hookup
+// exists (tests, or the settlement failing), the race still runs locally — the
+// economy must never block the racing — it just pays nothing.
 
 const DEFAULT_STRATEGY: Strategy = {
   startCompound: "medium",
@@ -51,43 +42,6 @@ const DEFAULT_STRATEGY: Strategy = {
   attackWithin: 1.0,
   conserveWhenLeadingBy: 3.0,
 };
-
-// Believable opposition: a spread of plans, so the field doesn't all pit on the
-// same lap and the race has some shape to it.
-function npcStrategy(rng: Rng): Strategy {
-  const roll = rng.next();
-  if (roll < 0.3) {
-    // The opportunist: aggressive tyres, jumps at a cheap stop.
-    return {
-      startCompound: "soft",
-      pitCompound: "medium",
-      pitAtWear: 0.58,
-      boxUnderSafetyCar: true,
-      attackWithin: 1.3,
-      conserveWhenLeadingBy: 2.5,
-    };
-  }
-  if (roll < 0.75) {
-    return {
-      startCompound: "medium",
-      pitCompound: "hard",
-      pitAtWear: 0.66,
-      boxUnderSafetyCar: true,
-      attackWithin: 0.9,
-      conserveWhenLeadingBy: 3.0,
-    };
-  }
-  // The track-position team: hards, run long, and a caution doesn't tempt
-  // them out of the plan.
-  return {
-    startCompound: "hard",
-    pitCompound: "medium",
-    pitAtWear: 0.8,
-    boxUnderSafetyCar: false,
-    attackWithin: 0.7,
-    conserveWhenLeadingBy: 3.5,
-  };
-}
 
 // The shakedown switch: add ?safetycar to the URL and every race runs on
 // crash-prone tuning with a guaranteed deployment, so the safety car can be
@@ -105,16 +59,29 @@ type Phase = "setup" | "quali" | "race";
 const COMPOUND_LABEL = { soft: "Soft", medium: "Medium", hard: "Hard" } as const;
 const CLIFF = { soft: 0.7, medium: 0.8, hard: 0.88 } as const;
 
-export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
-  const ranked = useMemo(
-    () => [...drivers].sort((a, b) => b.stats.pace - a.stats.pace),
-    [drivers]
-  );
+export function QuickRace({
+  drivers,
+  runRace,
+}: {
+  drivers: RatedDriver[];
+  // The server action that mints the seed and banks the payout. Optional so
+  // the component still races (unpaid) in tests and when settlement fails.
+  runRace?: (input: {
+    driverId: number;
+    strategy: Strategy;
+  }) => Promise<PaddockRaceSettlement>;
+}) {
+  const ranked = useMemo(() => rankDrivers(drivers), [drivers]);
 
   const [phase, setPhase] = useState<Phase>("setup");
   const [driverId, setDriverId] = useState<number>(ranked[0]?.driverId ?? 0);
   const [strategy, setStrategy] = useState<Strategy>(DEFAULT_STRATEGY);
   const [showResult, setShowResult] = useState(false);
+  const [settled, setSettled] = useState<{
+    coins: number;
+    balance: number;
+  } | null>(null);
+  const [starting, startTransition] = useTransition();
 
   // The plan the player has actually COMMITTED to. Nothing is simulated until
   // this exists.
@@ -134,55 +101,13 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
 
   const race = useMemo(() => {
     if (!committed) return null;
-    const me = ranked.find((d) => d.driverId === committed.driverId);
-    if (!me) return null;
-
-    const playerId = String(committed.driverId);
-    const rng = new Rng(committed.seed ^ 0x5f3759df);
-    const rivals = ranked
-      .filter((d) => d.driverId !== committed.driverId)
-      .slice(0, FIELD - 1);
-
-    const entrants: Entrant[] = [
-      {
-        id: playerId,
-        name: me.shortName,
-        driver: me.stats,
-        car: STOCK_CAR,
-        strategy: committed.strategy,
-        isPlayer: true,
-      },
-      ...rivals.map((d) => ({
-        id: String(d.driverId),
-        name: d.shortName,
-        driver: d.stats,
-        car: STOCK_CAR,
-        strategy: npcStrategy(rng),
-        isPlayer: false,
-      })),
-    ];
-
-    const track = getTrack(TRACK_ID);
-    // Qualify once, and keep the sheet: it IS the grid, and it's also the screen
-    // the player now sees. (gridFromQualifying would re-run the shootout and
-    // throw the lap times away.)
-    const quali = simulateQualifying(entrants, track, committed.seed);
-    const byId = new Map(entrants.map((e) => [e.id, e]));
-    const grid = quali.map((q) => byId.get(q.id)!);
-
-    const result = simulateRace({
-      track,
-      laps: LAPS,
-      entrants: grid,
-      seed: committed.seed,
-      tuning: committed.shakedown ? SHAKEDOWN_TUNING : undefined,
-    });
-    const report = buildRaceReport({
-      result,
-      playerId,
-      gridOrder: grid.map((e) => e.id),
-    });
-    return { entrants: grid, result, report, grid, quali, playerId };
+    return runQuickRace(
+      ranked,
+      committed.driverId,
+      committed.strategy,
+      committed.seed,
+      { tuning: committed.shakedown ? SHAKEDOWN_TUNING : undefined }
+    );
   }, [ranked, committed]);
 
   const me = ranked.find((d) => d.driverId === driverId);
@@ -195,21 +120,50 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
   }
 
   function startRace() {
-    // The seed is minted here, not during render: Math.random() in a useState
-    // initializer runs on the server AND the client and disagrees. The URL is
-    // read here too — a click handler only ever runs in the browser, so there
-    // is no server/client disagreement to hydrate wrongly.
+    // The URL is read in the click handler — it only ever runs in the
+    // browser, so there is no server/client disagreement to hydrate wrongly.
     const shakedown = new URLSearchParams(window.location.search).has(
       "safetycar"
     );
-    setCommitted({
-      driverId,
-      strategy,
-      seed: Math.floor(Math.random() * 1e9),
-      shakedown,
-    });
     setShowResult(false);
-    setPhase("quali");
+    setSettled(null);
+
+    // Shakedown races run test tuning the server would never settle, and
+    // tests have no server at all — both race locally, unpaid. (Math.random
+    // is fine for an unpaid seed; paid seeds are minted server-side so a
+    // client can't shop for a winner.)
+    if (shakedown || !runRace) {
+      setCommitted({
+        driverId,
+        strategy,
+        seed: Math.floor(Math.random() * 1e9),
+        shakedown,
+      });
+      setPhase("quali");
+      return;
+    }
+
+    startTransition(async () => {
+      const res = await runRace({ driverId, strategy });
+      if (res.ok) {
+        setSettled({ coins: res.coinsEarned, balance: res.balance });
+        setCommitted({
+          driverId,
+          strategy,
+          seed: res.seed,
+          shakedown: false,
+        });
+      } else {
+        // The economy must never block the racing: race locally, unpaid.
+        setCommitted({
+          driverId,
+          strategy,
+          seed: Math.floor(Math.random() * 1e9),
+          shakedown: false,
+        });
+      }
+      setPhase("quali");
+    });
   }
 
   function raceAgain() {
@@ -348,14 +302,20 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
           </div>
 
           <div className="mt-6 border-t border-border-default pt-5">
-            <StintPlan strategy={strategy} trackId={TRACK_ID} laps={LAPS} />
+            <StintPlan
+              strategy={strategy}
+              trackId={PADDOCK_TRACK_ID}
+              laps={PADDOCK_LAPS}
+            />
           </div>
         </section>
 
         <div className="flex items-center gap-4 pt-5">
-          <Button onClick={startRace}>Lights out</Button>
+          <Button onClick={startRace} disabled={starting}>
+            {starting ? "Forming the grid…" : "Lights out"}
+          </Button>
           <p className="font-mono text-[10px] tracking-wider text-muted uppercase">
-            Silverstone · {LAPS} laps · qualifying sets the grid
+            Silverstone · {PADDOCK_LAPS} laps · qualifying sets the grid
           </p>
         </div>
       </div>
@@ -363,7 +323,7 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
   }
 
   if (!race) return null;
-  const myGrid = race.grid.findIndex((e) => e.id === race.playerId) + 1;
+  const myGrid = race.gridPosition;
 
   if (phase === "quali") {
     return (
@@ -400,7 +360,7 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
       <RaceViewer
         result={race.result}
         entrants={race.entrants}
-        trackId={TRACK_ID}
+        trackId={PADDOCK_TRACK_ID}
         onFinish={() => setShowResult(true)}
       />
 
@@ -429,6 +389,23 @@ export function QuickRace({ drivers }: { drivers: RatedDriver[] }) {
               </li>
             ))}
           </ul>
+          <p
+            data-tabular
+            className="mt-5 font-mono text-sm tracking-wider uppercase tabular-nums"
+          >
+            {settled ? (
+              <>
+                <span className="text-accent">+{settled.coins} coins</span>
+                <span className="text-muted"> · balance {settled.balance}</span>
+              </>
+            ) : (
+              <span className="text-muted">
+                {committed?.shakedown
+                  ? "Shakedown race — no payout"
+                  : "Result not banked — no payout this time"}
+              </span>
+            )}
+          </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Button onClick={raceAgain}>Change the plan, race again</Button>
           </div>
