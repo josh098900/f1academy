@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
 import {
@@ -71,6 +72,7 @@ export function QuickRace({
     strategy: Strategy;
   }) => Promise<PaddockRaceSettlement>;
 }) {
+  const router = useRouter();
   const ranked = useMemo(() => rankDrivers(drivers), [drivers]);
 
   const [phase, setPhase] = useState<Phase>("setup");
@@ -361,7 +363,15 @@ export function QuickRace({
         result={race.result}
         entrants={race.entrants}
         trackId={PADDOCK_TRACK_ID}
-        onFinish={() => setShowResult(true)}
+        onFinish={() => {
+          setShowResult(true);
+          // The page's coin balance and race history are deliberately left
+          // stale at settlement (the race is DECIDED at lights out, but the
+          // player hasn't watched it yet — updating the header then would
+          // announce the result during qualifying). The flag has dropped
+          // now: let them catch up.
+          if (settled) router.refresh();
+        }}
       />
 
       {showResult ? (
