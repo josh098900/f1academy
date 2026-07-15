@@ -161,6 +161,7 @@ describe("QuickRace — the pit wall", () => {
       coinsEarned: 100,
       balance: 260,
       carLevels: { power: 0, aero: 0, reliability: 0, pitCrew: 0 },
+      staffLevels: { raceEngineer: 0, simulator: 0, dataAnalyst: 0 },
       racesToday: 1,
     }));
     render(<QuickRace drivers={DRIVERS} runRace={runRace} />);

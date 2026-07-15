@@ -4,29 +4,45 @@ import { getCurrentUser } from "@/lib/auth";
 import {
   type CarLevels,
   MAX_LEVEL,
+  MAX_STAFF_LEVEL,
+  type StaffLevels,
+  staffCost,
   upgradeCost,
 } from "@/lib/paddock/garage";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-// Buying a level, server-side. Same trust model as race settlement: the
-// client asks, the server prices the upgrade from the CURRENT level (the
-// cost table lives in code), and the write is a single compare-and-swap in
-// the database — the row must still show the level we priced, and the coins
-// must cover it, or nothing happens. Two rapid clicks buy one level, once.
+// Buying a level — car part or staff hire, same till. The client asks, the
+// server prices the upgrade from the CURRENT level (both cost tables live in
+// code), and the write is a single compare-and-swap in the database — the
+// row must still show the level we priced, and the coins must cover it, or
+// nothing happens. Two rapid clicks buy one level, once.
 
-export type Component = keyof CarLevels;
+export type Component = keyof CarLevels | keyof StaffLevels;
 
-const COLUMN: Record<Component, "power" | "aero" | "reliability" | "pit_crew"> =
-  {
-    power: "power",
-    aero: "aero",
-    reliability: "reliability",
-    pitCrew: "pit_crew",
-  };
+const COLUMN: Record<Component, string> = {
+  power: "power",
+  aero: "aero",
+  reliability: "reliability",
+  pitCrew: "pit_crew",
+  raceEngineer: "race_engineer",
+  simulator: "simulator",
+  dataAnalyst: "data_analyst",
+};
+
+const STAFF_KEYS: ReadonlySet<Component> = new Set([
+  "raceEngineer",
+  "simulator",
+  "dataAnalyst",
+]);
 
 export type UpgradePurchase =
-  | { ok: true; coins: number; carLevels: CarLevels }
+  | {
+      ok: true;
+      coins: number;
+      carLevels: CarLevels;
+      staffLevels: StaffLevels;
+    }
   | { ok: false; error: string };
 
 export async function buyUpgrade(
@@ -37,11 +53,14 @@ export async function buyUpgrade(
   if (!(component in COLUMN)) {
     return { ok: false, error: "That part doesn't exist." };
   }
+  const isStaff = STAFF_KEYS.has(component);
 
   const supabase = await createClient();
   const { data: team } = await supabase
     .from("paddock_teams")
-    .select("coins, car_power, car_aero, car_reliability, car_pit_crew")
+    .select(
+      "coins, car_power, car_aero, car_reliability, car_pit_crew, eng_race_engineer, eng_simulator, eng_data_analyst"
+    )
     .maybeSingle();
   if (!team) {
     return { ok: false, error: "Race first — the garage runs on winnings." };
@@ -52,14 +71,20 @@ export async function buyUpgrade(
     aero: team.car_aero,
     reliability: team.car_reliability,
     pitCrew: team.car_pit_crew,
+    raceEngineer: team.eng_race_engineer,
+    simulator: team.eng_simulator,
+    dataAnalyst: team.eng_data_analyst,
   }[component];
 
-  if (fromLevel >= MAX_LEVEL) {
-    return { ok: false, error: "That part is already full Diamond." };
-  }
-  const cost = upgradeCost(fromLevel);
-  if (cost === null) {
-    return { ok: false, error: "That part is already full Diamond." };
+  const maxLevel = isStaff ? MAX_STAFF_LEVEL : MAX_LEVEL;
+  const cost = isStaff ? staffCost(fromLevel) : upgradeCost(fromLevel);
+  if (fromLevel >= maxLevel || cost === null) {
+    return {
+      ok: false,
+      error: isStaff
+        ? "That department is fully staffed."
+        : "That part is already full Diamond.",
+    };
   }
   if (team.coins < cost) {
     return {
@@ -90,6 +115,11 @@ export async function buyUpgrade(
       aero: row.car_aero,
       reliability: row.car_reliability,
       pitCrew: row.car_pit_crew,
+    },
+    staffLevels: {
+      raceEngineer: row.eng_race_engineer,
+      simulator: row.eng_simulator,
+      dataAnalyst: row.eng_data_analyst,
     },
   };
 }

@@ -10,7 +10,12 @@ import {
   PADDOCK_TRACK_ID,
   runQuickRace,
 } from "@/lib/paddock/field";
-import { type CarLevels, ZERO_LEVELS } from "@/lib/paddock/garage";
+import {
+  type CarLevels,
+  type StaffLevels,
+  ZERO_LEVELS,
+  ZERO_STAFF,
+} from "@/lib/paddock/garage";
 import { usableDriverIds } from "@/lib/paddock/roster";
 import { getDriverRatings } from "@/lib/paddock/ratings";
 import { COMPOUNDS, type Strategy } from "@/lib/race-sim";
@@ -36,10 +41,11 @@ export type PaddockRaceSettlement =
       seed: number;
       coinsEarned: number;
       balance: number;
-      // The garage the server raced with — the client replays with EXACTLY
-      // these, so a purchase in another tab can't desync the broadcast from
-      // the banked result.
+      // The garage and staff the server raced with — the client replays
+      // with EXACTLY these, so a purchase in another tab can't desync the
+      // broadcast from the banked result.
       carLevels: CarLevels;
+      staffLevels: StaffLevels;
       racesToday: number; // including this one
     }
   | { ok: false; error: string; capped?: boolean };
@@ -99,10 +105,13 @@ export async function settleQuickRace(
   const season = await getCurrentSeason(supabase);
   if (!season) return { ok: false, error: "No season is running." };
 
-  // The garage this player actually owns — never trusted from the client.
+  // The garage and staff this player actually owns — never trusted from
+  // the client.
   const { data: team } = await supabase
     .from("paddock_teams")
-    .select("car_power, car_aero, car_reliability, car_pit_crew")
+    .select(
+      "car_power, car_aero, car_reliability, car_pit_crew, eng_race_engineer, eng_simulator, eng_data_analyst"
+    )
     .maybeSingle();
   const carLevels: CarLevels = team
     ? {
@@ -112,6 +121,13 @@ export async function settleQuickRace(
         pitCrew: team.car_pit_crew,
       }
     : ZERO_LEVELS;
+  const staffLevels: StaffLevels = team
+    ? {
+        raceEngineer: team.eng_race_engineer,
+        simulator: team.eng_simulator,
+        dataAnalyst: team.eng_data_analyst,
+      }
+    : ZERO_STAFF;
 
   const drivers = await getDriverRatings(supabase, season.id);
 
@@ -138,6 +154,7 @@ export async function settleQuickRace(
   const run = runQuickRace(drivers, driverId, strategy, seed, {
     captureFrames: false, // nobody watches this copy; the browser replays it
     carLevels,
+    staffLevels,
   });
   if (!run) return { ok: false, error: "That driver isn't on the grid." };
 
@@ -167,6 +184,7 @@ export async function settleQuickRace(
     coinsEarned: coins,
     balance: balance ?? coins,
     carLevels,
+    staffLevels,
     racesToday: recentRaces + 1,
   };
 }

@@ -6,8 +6,11 @@ import { GarageShop } from "@/components/paddock/GarageShop";
 import { getCurrentUser } from "@/lib/auth";
 import {
   type CarLevels,
+  type StaffLevels,
   ZERO_LEVELS,
+  ZERO_STAFF,
   rankFor,
+  staffTotal,
   totalLevels,
 } from "@/lib/paddock/garage";
 import { createClient } from "@/lib/supabase/server";
@@ -24,7 +27,9 @@ export default async function GaragePage() {
 
   const { data: team } = await supabase
     .from("paddock_teams")
-    .select("coins, car_power, car_aero, car_reliability, car_pit_crew")
+    .select(
+      "coins, car_power, car_aero, car_reliability, car_pit_crew, eng_race_engineer, eng_simulator, eng_data_analyst"
+    )
     .maybeSingle();
 
   const coins = team?.coins ?? 0;
@@ -36,7 +41,14 @@ export default async function GaragePage() {
         pitCrew: team.car_pit_crew,
       }
     : ZERO_LEVELS;
-  const rank = rankFor(totalLevels(levels));
+  const staff: StaffLevels = team
+    ? {
+        raceEngineer: team.eng_race_engineer,
+        simulator: team.eng_simulator,
+        dataAnalyst: team.eng_data_analyst,
+      }
+    : ZERO_STAFF;
+  const rank = rankFor(totalLevels(levels) + staffTotal(staff));
 
   return (
     <main>
@@ -68,6 +80,7 @@ export default async function GaragePage() {
         <GarageShop
           initialCoins={coins}
           initialLevels={levels}
+          initialStaff={staff}
           buy={buyPaddockUpgrade}
         />
       </div>

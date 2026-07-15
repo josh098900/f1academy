@@ -3,7 +3,9 @@ import "server-only";
 import { getCurrentUser } from "@/lib/auth";
 import {
   ZERO_LEVELS,
+  ZERO_STAFF,
   rankFor,
+  staffTotal,
   totalLevels,
 } from "@/lib/paddock/garage";
 import { getDriverRatings } from "@/lib/paddock/ratings";
@@ -34,7 +36,9 @@ export async function signDriver(driverId: number): Promise<DriverSignature> {
     getDriverRatings(supabase, season.id),
     supabase
       .from("paddock_teams")
-      .select("coins, car_power, car_aero, car_reliability, car_pit_crew")
+      .select(
+        "coins, car_power, car_aero, car_reliability, car_pit_crew, eng_race_engineer, eng_simulator, eng_data_analyst"
+      )
       .maybeSingle(),
     supabase.from("paddock_contracts").select("driver_id"),
   ]);
@@ -50,7 +54,16 @@ export async function signDriver(driverId: number): Promise<DriverSignature> {
             pitCrew: team.car_pit_crew,
           }
         : ZERO_LEVELS
-    )
+    ) +
+      staffTotal(
+        team
+          ? {
+              raceEngineer: team.eng_race_engineer,
+              simulator: team.eng_simulator,
+              dataAnalyst: team.eng_data_analyst,
+            }
+          : ZERO_STAFF
+      )
   );
   const signedIds = new Set(
     (contractsRes.data ?? []).map((c) => c.driver_id)
