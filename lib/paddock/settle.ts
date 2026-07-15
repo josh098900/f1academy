@@ -11,6 +11,7 @@ import {
   runQuickRace,
 } from "@/lib/paddock/field";
 import { type CarLevels, ZERO_LEVELS } from "@/lib/paddock/garage";
+import { usableDriverIds } from "@/lib/paddock/roster";
 import { getDriverRatings } from "@/lib/paddock/ratings";
 import { COMPOUNDS, type Strategy } from "@/lib/race-sim";
 import { getCurrentSeason } from "@/lib/queries";
@@ -113,6 +114,22 @@ export async function settleQuickRace(
     : ZERO_LEVELS;
 
   const drivers = await getDriverRatings(supabase, season.id);
+
+  // The roster gate: free seats and signatures only. The client's picker
+  // enforces this too, but the server is the one that pays out.
+  const { data: contracts } = await supabase
+    .from("paddock_contracts")
+    .select("driver_id");
+  const usable = usableDriverIds(
+    drivers,
+    new Set((contracts ?? []).map((c) => c.driver_id))
+  );
+  if (!usable.has(driverId)) {
+    return {
+      ok: false,
+      error: "She's not on your books — contracts are signed in the roster.",
+    };
+  }
 
   // The seed is the server's, never the client's — otherwise a player could
   // simulate locally until they find a race they win, and submit only that.

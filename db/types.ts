@@ -271,6 +271,42 @@ export type Database = {
           },
         ]
       }
+      paddock_contracts: {
+        Row: {
+          cost: number
+          driver_id: number
+          signed_at: string
+          user_id: string
+        }
+        Insert: {
+          cost: number
+          driver_id: number
+          signed_at?: string
+          user_id: string
+        }
+        Update: {
+          cost?: number
+          driver_id?: number
+          signed_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paddock_contracts_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "drivers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paddock_contracts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       paddock_races: {
         Row: {
           coins_earned: number
@@ -895,6 +931,10 @@ export type Database = {
         Returns: number
       }
       shares_league_with: { Args: { target: string }; Returns: boolean }
+      sign_paddock_driver: {
+        Args: { p_cost: number; p_driver_id: number; p_user_id: string }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never

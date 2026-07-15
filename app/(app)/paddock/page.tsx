@@ -12,6 +12,7 @@ import {
   totalLevels,
 } from "@/lib/paddock/garage";
 import { getDriverRatings } from "@/lib/paddock/ratings";
+import { usableDriverIds } from "@/lib/paddock/roster";
 import { racesInLast24h } from "@/lib/paddock/settle";
 import { getCurrentSeason } from "@/lib/queries";
 import { createClient } from "@/lib/supabase/server";
@@ -29,19 +30,21 @@ export default async function PaddockPage() {
   const supabase = await createClient();
 
   const season = await getCurrentSeason(supabase);
-  const [drivers, teamRes, recentRes, racesToday] = await Promise.all([
-    season ? getDriverRatings(supabase, season.id) : Promise.resolve([]),
-    supabase
-      .from("paddock_teams")
-      .select("coins, car_power, car_aero, car_reliability, car_pit_crew")
-      .maybeSingle(),
-    supabase
-      .from("paddock_races")
-      .select("id, finish_position, retired, coins_earned")
-      .order("created_at", { ascending: false })
-      .limit(5),
-    racesInLast24h(supabase),
-  ]);
+  const [drivers, teamRes, recentRes, racesToday, contractsRes] =
+    await Promise.all([
+      season ? getDriverRatings(supabase, season.id) : Promise.resolve([]),
+      supabase
+        .from("paddock_teams")
+        .select("coins, car_power, car_aero, car_reliability, car_pit_crew")
+        .maybeSingle(),
+      supabase
+        .from("paddock_races")
+        .select("id, finish_position, retired, coins_earned")
+        .order("created_at", { ascending: false })
+        .limit(5),
+      racesInLast24h(supabase),
+      supabase.from("paddock_contracts").select("driver_id"),
+    ]);
   const team = teamRes.data;
   const coins = team?.coins ?? 0;
   const carLevels: CarLevels = team
@@ -54,6 +57,10 @@ export default async function PaddockPage() {
     : ZERO_LEVELS;
   const rank = rankFor(totalLevels(carLevels));
   const recent = recentRes.data ?? [];
+  const usable = usableDriverIds(
+    drivers,
+    new Set((contractsRes.data ?? []).map((c) => c.driver_id))
+  );
 
   return (
     <main>
@@ -75,6 +82,12 @@ export default async function PaddockPage() {
             >
               <span className="text-muted">Garage · </span>
               <span className="text-accent">{coins} coins</span>
+            </Link>
+            <Link
+              href="/paddock/drivers"
+              className="font-mono text-xs tracking-wider text-muted uppercase underline-offset-4 hover:text-primary hover:underline"
+            >
+              Roster
             </Link>
             <p
               data-tabular
@@ -106,6 +119,7 @@ export default async function PaddockPage() {
             drivers={drivers}
             runRace={runPaddockRace}
             carLevels={carLevels}
+            usableDriverIds={[...usable]}
           />
         )}
       </div>

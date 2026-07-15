@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
@@ -65,6 +66,7 @@ export function QuickRace({
   drivers,
   runRace,
   carLevels = ZERO_LEVELS,
+  usableDriverIds,
 }: {
   drivers: RatedDriver[];
   // The server action that mints the seed and banks the payout. Optional so
@@ -77,12 +79,24 @@ export function QuickRace({
   // Paid races replay with the levels the SERVER echoes back, so a purchase
   // in another tab can never desync the broadcast from the banked result.
   carLevels?: CarLevels;
+  // Free seats + signed contracts. Omitted (tests) = the whole grid.
+  usableDriverIds?: number[];
 }) {
   const router = useRouter();
   const ranked = useMemo(() => rankDrivers(drivers), [drivers]);
+  const usable = useMemo(
+    () => new Set(usableDriverIds ?? ranked.map((d) => d.driverId)),
+    [usableDriverIds, ranked]
+  );
 
   const [phase, setPhase] = useState<Phase>("setup");
-  const [driverId, setDriverId] = useState<number>(ranked[0]?.driverId ?? 0);
+  // Default to the best driver you're actually ALLOWED to run.
+  const [driverId, setDriverId] = useState<number>(
+    () =>
+      ranked.find((d) =>
+        usableDriverIds ? usableDriverIds.includes(d.driverId) : true
+      )?.driverId ?? 0
+  );
   const [strategy, setStrategy] = useState<Strategy>(DEFAULT_STRATEGY);
   const [showResult, setShowResult] = useState(false);
   const [settled, setSettled] = useState<{
@@ -213,17 +227,21 @@ export function QuickRace({
           <ul className="mt-4 grid gap-px sm:grid-cols-2">
             {ranked.map((d, i) => {
               const active = d.driverId === driverId;
+              const locked = !usable.has(d.driverId);
               return (
                 <li key={d.driverId}>
                   <button
                     type="button"
                     onClick={() => setDriverId(d.driverId)}
+                    disabled={locked}
                     aria-pressed={active}
                     className={`flex w-full items-center gap-3 border px-3 py-2.5 text-left transition-colors ${
                       active
                         ? "border-accent bg-accent/10"
-                        : "border-border-default hover:border-border-strong"
-                    }`}
+                        : locked
+                          ? "border-border-default opacity-45"
+                          : "border-border-default hover:border-border-strong"
+                    } disabled:cursor-not-allowed`}
                   >
                     <span
                       data-tabular
@@ -238,12 +256,18 @@ export function QuickRace({
                     >
                       {d.name}
                     </span>
-                    <span
-                      data-tabular
-                      className="font-mono text-[10px] text-secondary tabular-nums"
-                    >
-                      {d.stats.pace}/{d.stats.racecraft}/{d.stats.consistency}
-                    </span>
+                    {locked ? (
+                      <span className="font-mono text-[10px] tracking-wider text-muted uppercase">
+                        Contract
+                      </span>
+                    ) : (
+                      <span
+                        data-tabular
+                        className="font-mono text-[10px] text-secondary tabular-nums"
+                      >
+                        {d.stats.pace}/{d.stats.racecraft}/{d.stats.consistency}
+                      </span>
+                    )}
                   </button>
                 </li>
               );
@@ -252,6 +276,18 @@ export function QuickRace({
           <p className="mt-3 font-mono text-[10px] tracking-wider text-muted uppercase">
             Pace / Racecraft / Consistency · a driver with few races is rated
             cautiously until the season proves her
+            {usableDriverIds && usable.size < ranked.length && (
+              <>
+                {" "}
+                ·{" "}
+                <Link
+                  href="/paddock/drivers"
+                  className="text-accent underline-offset-4 hover:underline"
+                >
+                  contracts are signed in the roster →
+                </Link>
+              </>
+            )}
           </p>
         </section>
 

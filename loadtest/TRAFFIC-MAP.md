@@ -174,6 +174,13 @@ needed, recorded for completeness):
   cost). `GET /paddock/garage` is a Layer-2 read of the same row. The race
   settlement also now counts `paddock_races` in a rolling 24h window (the
   10-race earning cap) before paying.
+- **`signPaddockDriver` server action** (Layer 3, added 2026-07-16 with the
+  roster): rebuilds the roster server-side (band, price, rank gate), then
+  service-role-only RPC `sign_paddock_driver` — one transaction deducts the
+  coins and inserts the `paddock_contracts` row; a duplicate signature hits
+  the primary key and rolls the deduction back. `GET /paddock/drivers` is a
+  Layer-2 read. Settlement now also reads own `paddock_contracts` to enforce
+  the drivable set (free seats + signatures).
 
 ### 6. Realtime — out of gridload scope, but note the load
 
