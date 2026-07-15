@@ -126,6 +126,30 @@ describe("QuickRace — the pit wall", () => {
     expect(screen.getByText(/^LEADER$/)).toBeInTheDocument();
   });
 
+  it("locks contract drivers in the picker and defaults to a drivable seat", async () => {
+    const user = userEvent.setup();
+    // Only the bottom four are drivable (a fresh account, nothing signed).
+    render(
+      <QuickRace drivers={DRIVERS} usableDriverIds={[6, 7, 8, 9]} />
+    );
+
+    // The default pick is the best driver you're ALLOWED to run, not P1.
+    expect(screen.getByRole("button", { name: /Billard/ })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    // The stars are visible but locked...
+    const top = screen.getByRole("button", { name: /Palmowski/ });
+    expect(top).toBeDisabled();
+    expect(top).toHaveTextContent("Contract");
+    await user.click(top);
+    expect(top).toHaveAttribute("aria-pressed", "false");
+    // ...and the way to them is signposted.
+    expect(
+      screen.getByRole("link", { name: /signed in the roster/i })
+    ).toHaveAttribute("href", "/paddock/drivers");
+  });
+
   it("banks the race through the server when a hookup exists", async () => {
     // The server mints the seed and settles the payout; the component must
     // send the committed plan and race on the seed it gets back. (Without

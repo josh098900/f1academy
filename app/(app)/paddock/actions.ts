@@ -11,6 +11,7 @@ import {
   type PaddockRaceSettlement,
   settleQuickRace,
 } from "@/lib/paddock/settle";
+import { type DriverSignature, signDriver } from "@/lib/paddock/sign";
 import type { Strategy } from "@/lib/race-sim";
 
 // Start-and-settle for a quick race. The server mints the seed, runs the
@@ -40,6 +41,19 @@ export async function buyPaddockUpgrade(
   if (result.ok) {
     revalidatePath("/paddock");
     revalidatePath("/paddock/garage");
+  }
+  return result;
+}
+
+// Signing a driver — a contract, not a race, so nothing to spoil: refresh
+// everywhere the moment the ink dries.
+export async function signPaddockDriver(
+  driverId: number
+): Promise<DriverSignature> {
+  const result = await signDriver(driverId);
+  if (result.ok) {
+    revalidatePath("/paddock");
+    revalidatePath("/paddock/drivers");
   }
   return result;
 }
