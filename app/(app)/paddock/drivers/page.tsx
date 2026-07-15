@@ -6,8 +6,11 @@ import { RosterShop } from "@/components/paddock/RosterShop";
 import { getCurrentUser } from "@/lib/auth";
 import {
   type CarLevels,
+  type StaffLevels,
   ZERO_LEVELS,
+  ZERO_STAFF,
   rankFor,
+  staffTotal,
   totalLevels,
 } from "@/lib/paddock/garage";
 import { getDriverRatings } from "@/lib/paddock/ratings";
@@ -32,7 +35,9 @@ export default async function DriversPage() {
       : Promise.resolve([]),
     supabase
       .from("paddock_teams")
-      .select("coins, car_power, car_aero, car_reliability, car_pit_crew")
+      .select(
+        "coins, car_power, car_aero, car_reliability, car_pit_crew, eng_race_engineer, eng_simulator, eng_data_analyst"
+      )
       .maybeSingle(),
     supabase.from("paddock_contracts").select("driver_id"),
   ]);
@@ -46,7 +51,14 @@ export default async function DriversPage() {
         pitCrew: team.car_pit_crew,
       }
     : ZERO_LEVELS;
-  const rank = rankFor(totalLevels(levels));
+  const staff: StaffLevels = team
+    ? {
+        raceEngineer: team.eng_race_engineer,
+        simulator: team.eng_simulator,
+        dataAnalyst: team.eng_data_analyst,
+      }
+    : ZERO_STAFF;
+  const rank = rankFor(totalLevels(levels) + staffTotal(staff));
   const signedIds = new Set(
     (contractsRes.data ?? []).map((c) => c.driver_id)
   );

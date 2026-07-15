@@ -15,10 +15,14 @@ import {
 
 import {
   type CarLevels,
+  type StaffLevels,
   ZERO_LEVELS,
+  ZERO_STAFF,
+  applyStaff,
   carStatsFor,
   npcLevelsFor,
   rankFor,
+  staffTotal,
   totalLevels,
 } from "./garage";
 import type { RatedDriver } from "./ratings";
@@ -108,6 +112,9 @@ export function runQuickRace(
     // The player's garage. Omitted = the stock car (rank 1) — which is also
     // every test's default, so the pre-garage races replay unchanged.
     carLevels?: CarLevels;
+    // The player's staff: bonuses on WHOEVER is in the car, never touching
+    // her derived base rating. Counts toward rank like any other level.
+    staffLevels?: StaffLevels;
   } = {}
 ): QuickRaceRun | null {
   const ranked = rankDrivers(drivers);
@@ -115,7 +122,8 @@ export function runQuickRace(
   if (!me || ranked.length < PADDOCK_FIELD) return null;
 
   const levels = opts.carLevels ?? ZERO_LEVELS;
-  const rank = rankFor(totalLevels(levels));
+  const staff = opts.staffLevels ?? ZERO_STAFF;
+  const rank = rankFor(totalLevels(levels) + staffTotal(staff));
 
   const playerId = String(playerDriverId);
   const rng = new Rng(seed ^ 0x5f3759df);
@@ -127,7 +135,7 @@ export function runQuickRace(
     {
       id: playerId,
       name: me.shortName,
-      driver: me.stats,
+      driver: applyStaff(me.stats, staff),
       car: carStatsFor(levels),
       strategy: playerStrategy,
       isPlayer: true,

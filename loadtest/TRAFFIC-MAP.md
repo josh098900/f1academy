@@ -168,7 +168,8 @@ needed, recorded for completeness):
   RPC is revoked from `authenticated` entirely. (Worth a one-off curl check
   on staging, like the leaderboard RPC verification above.)
 - **`buyPaddockUpgrade` server action** (Layer 3, added 2026-07-16 with the
-  garage): authenticates, reads own `paddock_teams`, prices the level in
+  garage; extended same day to the three staff columns, cap 10): authenticates,
+  reads own `paddock_teams`, prices the level in
   code, then calls service-role-only RPC `buy_paddock_upgrade` — an atomic
   compare-and-swap (row must still show the priced level and cover the
   cost). `GET /paddock/garage` is a Layer-2 read of the same row. The race

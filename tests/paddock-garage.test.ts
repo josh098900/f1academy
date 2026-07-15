@@ -3,12 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_LEVEL,
   MAX_RANK,
+  MAX_STAFF_LEVEL,
   RANK_SIZE,
   TIERS,
   ZERO_LEVELS,
+  ZERO_STAFF,
+  applyStaff,
   carStatsFor,
   npcLevelsFor,
   rankFor,
+  staffBonus,
+  staffCost,
+  staffTotal,
   statFor,
   tierIndexOf,
   totalLevels,
@@ -65,7 +71,9 @@ describe("the garage model", () => {
     expect(rankFor(0)).toBe(1);
     expect(rankFor(RANK_SIZE - 1)).toBe(1);
     expect(rankFor(RANK_SIZE)).toBe(2);
-    expect(rankFor(4 * MAX_LEVEL)).toBe(MAX_RANK);
+    // A maxed CAR alone is rank 11; the last three ranks are staff country.
+    expect(rankFor(4 * MAX_LEVEL)).toBe(11);
+    expect(rankFor(4 * MAX_LEVEL + 3 * MAX_STAFF_LEVEL)).toBe(MAX_RANK);
     expect(
       rankFor(totalLevels({ power: 5, aero: 5, reliability: 5, pitCrew: 5 }))
     ).toBe(3);
@@ -102,5 +110,54 @@ describe("the garage model", () => {
     for (let i = 0; i < 20; i++) {
       expect(npcLevelsFor(5, a)).toEqual(npcLevelsFor(5, b));
     }
+  });
+});
+
+describe("the staff", () => {
+  const BASE = { pace: 68, racecraft: 53, consistency: 74 };
+
+  it("maps each department to its stat, one point per level, legibly", () => {
+    const bonus = staffBonus({ raceEngineer: 3, simulator: 7, dataAnalyst: 1 });
+    expect(bonus).toEqual({ pace: 7, racecraft: 1, consistency: 3 });
+  });
+
+  it("boosts WHOEVER is in the car, on top of her real rating — capped at 100", () => {
+    const boosted = applyStaff(BASE, {
+      raceEngineer: 10,
+      simulator: 10,
+      dataAnalyst: 10,
+    });
+    expect(boosted).toEqual({ pace: 78, racecraft: 63, consistency: 84 });
+    // Her base is untouched — the bonus is the team's, not hers.
+    expect(BASE.pace).toBe(68);
+    // And nobody staff-trains past the ceiling.
+    expect(
+      applyStaff(
+        { pace: 95, racecraft: 95, consistency: 95 },
+        { raceEngineer: 10, simulator: 10, dataAnalyst: 10 }
+      )
+    ).toEqual({ pace: 100, racecraft: 100, consistency: 100 });
+  });
+
+  it("prices seniority on a climbing curve, and fully-staffed buys nothing", () => {
+    let previous = 0;
+    for (let l = 0; l < MAX_STAFF_LEVEL; l++) {
+      const cost = staffCost(l)!;
+      expect(cost).toBeGreaterThan(previous);
+      previous = cost;
+    }
+    expect(staffCost(0)!).toBeGreaterThanOrEqual(100); // after the first parts, not before
+    expect(staffCost(MAX_STAFF_LEVEL)).toBeNull();
+  });
+
+  it("counts staff toward rank — the matchmaker sees every level", () => {
+    expect(staffTotal(ZERO_STAFF)).toBe(0);
+    const car = { power: 5, aero: 5, reliability: 5, pitCrew: 0 };
+    const staff = { raceEngineer: 3, simulator: 2, dataAnalyst: 0 };
+    // 15 car + 5 staff = 20 → rank 3, same as 20 car levels would be.
+    expect(rankFor(totalLevels(car) + staffTotal(staff))).toBe(3);
+    expect(MAX_RANK).toBe(
+      1 + (4 * MAX_LEVEL + 3 * MAX_STAFF_LEVEL) / RANK_SIZE
+    );
   });
 });

@@ -19,7 +19,14 @@ import {
   rankDrivers,
   runQuickRace,
 } from "@/lib/paddock/field";
-import { type CarLevels, ZERO_LEVELS } from "@/lib/paddock/garage";
+import {
+  type CarLevels,
+  type StaffLevels,
+  ZERO_LEVELS,
+  ZERO_STAFF,
+  staffBonus,
+  staffTotal,
+} from "@/lib/paddock/garage";
 import type { RatedDriver } from "@/lib/paddock/ratings";
 import type { PaddockRaceSettlement } from "@/lib/paddock/settle";
 import { type Strategy, type Tuning } from "@/lib/race-sim";
@@ -66,6 +73,7 @@ export function QuickRace({
   drivers,
   runRace,
   carLevels = ZERO_LEVELS,
+  staffLevels = ZERO_STAFF,
   usableDriverIds,
 }: {
   drivers: RatedDriver[];
@@ -75,10 +83,12 @@ export function QuickRace({
     driverId: number;
     strategy: Strategy;
   }) => Promise<PaddockRaceSettlement>;
-  // The player's garage, for local (unpaid) races and the pit-wall display.
-  // Paid races replay with the levels the SERVER echoes back, so a purchase
-  // in another tab can never desync the broadcast from the banked result.
+  // The player's garage and staff, for local (unpaid) races and the pit-wall
+  // display. Paid races replay with the levels the SERVER echoes back, so a
+  // purchase in another tab can never desync the broadcast from the banked
+  // result.
   carLevels?: CarLevels;
+  staffLevels?: StaffLevels;
   // Free seats + signed contracts. Omitted (tests) = the whole grid.
   usableDriverIds?: number[];
 }) {
@@ -122,6 +132,7 @@ export function QuickRace({
     seed: number;
     shakedown: boolean;
     carLevels: CarLevels;
+    staffLevels: StaffLevels;
   } | null>(null);
 
   const race = useMemo(() => {
@@ -134,6 +145,7 @@ export function QuickRace({
       {
         tuning: committed.shakedown ? SHAKEDOWN_TUNING : undefined,
         carLevels: committed.carLevels,
+        staffLevels: committed.staffLevels,
       }
     );
   }, [ranked, committed]);
@@ -168,6 +180,7 @@ export function QuickRace({
         seed: Math.floor(Math.random() * 1e9),
         shakedown,
         carLevels,
+        staffLevels,
       });
       setPhase("quali");
       return;
@@ -188,6 +201,7 @@ export function QuickRace({
           shakedown: false,
           // Replay with the garage the SERVER raced, not the page's copy.
           carLevels: res.carLevels,
+          staffLevels: res.staffLevels,
         });
       } else {
         // The economy must never block the racing: race locally, unpaid —
@@ -199,6 +213,7 @@ export function QuickRace({
           seed: Math.floor(Math.random() * 1e9),
           shakedown: false,
           carLevels,
+          staffLevels,
         });
       }
       setPhase("quali");
@@ -289,6 +304,14 @@ export function QuickRace({
               </>
             )}
           </p>
+          {staffTotal(staffLevels) > 0 && (
+            <p className="mt-1 font-mono text-[10px] tracking-wider text-accent uppercase">
+              Your staff add +{staffBonus(staffLevels).pace} pace · +
+              {staffBonus(staffLevels).racecraft} racecraft · +
+              {staffBonus(staffLevels).consistency} consistency — on whoever
+              you field
+            </p>
+          )}
         </section>
 
         {/* The pit wall */}

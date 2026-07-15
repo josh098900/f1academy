@@ -886,6 +886,9 @@ export type Database = {
           car_power: number
           car_reliability: number
           coins: number
+          eng_data_analyst: number
+          eng_race_engineer: number
+          eng_simulator: number
         }[]
       }
       global_leaderboard: {

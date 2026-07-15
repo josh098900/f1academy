@@ -6,19 +6,25 @@ import type { Component, UpgradePurchase } from "@/lib/paddock/buy";
 import {
   type CarLevels,
   MAX_LEVEL,
+  MAX_STAFF_LEVEL,
+  STAFF_ROLES,
+  type StaffLevels,
   TIERS,
   TIER_SIZE,
+  staffCost,
   statFor,
   tierIndexOf,
   upgradeCost,
 } from "@/lib/paddock/garage";
 
-// The garage floor. Four components, twenty-five levels each, five tiers of
-// paint — and every card shows the CONSEQUENCE before the purchase: the stat
-// you'd have, the price on the part, and how far up the ladder you are.
+// The garage floor. Four car components, twenty-five levels each, five tiers
+// of paint — and below them, the staff: three departments of ten, boosting
+// whoever sits in the car. One wallet owns the whole floor, so a purchase
+// anywhere updates the balance everywhere. Every card shows the CONSEQUENCE
+// before the purchase: the stat you'd have, the price, the ladder.
 
 const COMPONENTS: Array<{
-  key: Component;
+  key: keyof CarLevels;
   label: string;
   blurb: string;
 }> = [
@@ -37,14 +43,17 @@ function partName(key: Component, level: number): string {
 export function GarageShop({
   initialCoins,
   initialLevels,
+  initialStaff,
   buy,
 }: {
   initialCoins: number;
   initialLevels: CarLevels;
+  initialStaff: StaffLevels;
   buy: (component: Component) => Promise<UpgradePurchase>;
 }) {
   const [coins, setCoins] = useState(initialCoins);
   const [levels, setLevels] = useState(initialLevels);
+  const [staff, setStaff] = useState(initialStaff);
   const [message, setMessage] = useState<string | null>(null);
   const [pendingPart, setPendingPart] = useState<Component | null>(null);
   const [, startTransition] = useTransition();
@@ -57,6 +66,7 @@ export function GarageShop({
       if (res.ok) {
         setCoins(res.coins);
         setLevels(res.carLevels);
+        setStaff(res.staffLevels);
       } else {
         setMessage(res.error);
       }
@@ -157,6 +167,89 @@ export function GarageShop({
                       } disabled:cursor-not-allowed`}
                     >
                       {busy ? "Fitting…" : `Buy · ${cost}`}
+                    </button>
+                  </>
+                )}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+
+      {/* The staff. People, not parts: no tiers, just seniority — and the
+          bonus rides on WHOEVER is in the car. Her real rating stays hers. */}
+      <div className="border border-border-default bg-surface px-5 py-3">
+        <h2 className="font-display text-xs tracking-[0.2em] text-accent uppercase">
+          Staff
+        </h2>
+        <p className="mt-1 font-body text-[11px] leading-snug text-muted">
+          Your team, not the driver: the bonus applies to whoever you field,
+          on top of her real, reality-derived rating.
+        </p>
+      </div>
+      <div className="grid gap-px sm:grid-cols-3">
+        {STAFF_ROLES.map(({ key, label, stat, blurb }) => {
+          const level = staff[key];
+          const cost = staffCost(level);
+          const affordable = cost !== null && coins >= cost;
+          const busy = pendingPart === key;
+          return (
+            <section
+              key={key}
+              className="border border-border-default bg-surface p-5"
+            >
+              <div className="flex items-baseline justify-between gap-3">
+                <h3 className="font-display text-xs tracking-[0.2em] text-primary uppercase">
+                  {label}
+                </h3>
+                <span
+                  data-tabular
+                  className="font-mono text-xs text-secondary tabular-nums"
+                >
+                  +{level} {stat}
+                </span>
+              </div>
+              <p className="mt-1 font-body text-[11px] leading-snug text-muted">
+                {blurb}
+              </p>
+
+              <div className="mt-4 flex gap-px" aria-hidden="true">
+                {Array.from({ length: MAX_STAFF_LEVEL }, (_, i) => (
+                  <span
+                    key={i}
+                    className="h-3 flex-1"
+                    style={{
+                      background: i < level ? "#ff2d92" : "#1c1c1c",
+                      opacity: i < level ? 0.85 : 1,
+                    }}
+                  />
+                ))}
+              </div>
+              <p className="mt-1.5 font-mono text-[10px] tracking-wider text-muted uppercase">
+                Level {level}/{MAX_STAFF_LEVEL}
+              </p>
+
+              <div className="mt-4 flex items-center justify-between gap-3">
+                {cost === null ? (
+                  <p className="font-mono text-xs tracking-wider text-secondary uppercase">
+                    Fully staffed
+                  </p>
+                ) : (
+                  <>
+                    <p className="font-body text-xs text-secondary">
+                      Next: +{level + 1} {stat}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => purchase(key)}
+                      disabled={!affordable || busy}
+                      className={`h-8 border px-3 font-mono text-xs tracking-wider uppercase transition-colors ${
+                        affordable
+                          ? "border-accent text-accent hover:bg-accent/10"
+                          : "border-border-default text-muted"
+                      } disabled:cursor-not-allowed`}
+                    >
+                      {busy ? "Hiring…" : `Hire · ${cost}`}
                     </button>
                   </>
                 )}
