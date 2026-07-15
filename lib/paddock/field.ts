@@ -13,6 +13,14 @@ import {
   simulateRace,
 } from "@/lib/race-sim";
 
+import {
+  type CarLevels,
+  ZERO_LEVELS,
+  carStatsFor,
+  npcLevelsFor,
+  rankFor,
+  totalLevels,
+} from "./garage";
 import type { RatedDriver } from "./ratings";
 
 // The Quick Race, as a pure function — THE function, singular, because it now
@@ -26,14 +34,9 @@ export const PADDOCK_TRACK_ID = "silverstone"; // the only circuit with a racing
 export const PADDOCK_LAPS = 15;
 export const PADDOCK_FIELD = 8;
 
-// Identical machinery for everyone, so the race is decided by the driver you
-// picked and the plan you wrote. The garage is where this stops being true.
-export const STOCK_CAR: CarStats = {
-  power: 60,
-  aero: 60,
-  reliability: 60,
-  pitCrew: 60,
-};
+// The stock car — a zero-level garage. Kept as a named constant because the
+// tests and the pre-garage era both speak of it.
+export const STOCK_CAR: CarStats = carStatsFor(ZERO_LEVELS);
 
 // Believable opposition: a spread of plans, so the field doesn't all pit on
 // the same lap and the race has some shape to it.
@@ -91,6 +94,7 @@ export type QuickRaceRun = {
   report: RaceReport;
   playerId: string;
   gridPosition: number; // the player's, 1-based
+  rank: number; // the player's rank, from the garage they brought
 };
 
 export function runQuickRace(
@@ -98,11 +102,20 @@ export function runQuickRace(
   playerDriverId: number,
   playerStrategy: Strategy,
   seed: number,
-  opts: { captureFrames?: boolean; tuning?: Partial<Tuning> } = {}
+  opts: {
+    captureFrames?: boolean;
+    tuning?: Partial<Tuning>;
+    // The player's garage. Omitted = the stock car (rank 1) — which is also
+    // every test's default, so the pre-garage races replay unchanged.
+    carLevels?: CarLevels;
+  } = {}
 ): QuickRaceRun | null {
   const ranked = rankDrivers(drivers);
   const me = ranked.find((d) => d.driverId === playerDriverId);
   if (!me || ranked.length < PADDOCK_FIELD) return null;
+
+  const levels = opts.carLevels ?? ZERO_LEVELS;
+  const rank = rankFor(totalLevels(levels));
 
   const playerId = String(playerDriverId);
   const rng = new Rng(seed ^ 0x5f3759df);
@@ -115,16 +128,18 @@ export function runQuickRace(
       id: playerId,
       name: me.shortName,
       driver: me.stats,
-      car: STOCK_CAR,
+      car: carStatsFor(levels),
       strategy: playerStrategy,
       isPlayer: true,
     },
+    // Per NPC, in ranking order: strategy first, then garage — a fixed draw
+    // sequence, so the same seed deals the same field every time.
     ...rivals.map((d) => ({
       id: String(d.driverId),
       name: d.shortName,
       driver: d.stats,
-      car: STOCK_CAR,
       strategy: npcStrategy(rng),
+      car: carStatsFor(npcLevelsFor(rank, rng)),
       isPlayer: false,
     })),
   ];
@@ -158,5 +173,6 @@ export function runQuickRace(
     report,
     playerId,
     gridPosition: grid.findIndex((e) => e.id === playerId) + 1,
+    rank,
   };
 }

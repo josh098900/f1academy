@@ -1,5 +1,12 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+
+import {
+  type Component,
+  type UpgradePurchase,
+  buyUpgrade,
+} from "@/lib/paddock/buy";
 import {
   type PaddockRaceSettlement,
   settleQuickRace,
@@ -21,4 +28,18 @@ export async function runPaddockRace(input: {
   strategy: Strategy;
 }): Promise<PaddockRaceSettlement> {
   return settleQuickRace(input.driverId, input.strategy);
+}
+
+// Buying a car upgrade. Unlike a race there is nothing to spoil, so this one
+// revalidates immediately — the balance and levels should change everywhere
+// the moment the till rings.
+export async function buyPaddockUpgrade(
+  component: Component
+): Promise<UpgradePurchase> {
+  const result = await buyUpgrade(component);
+  if (result.ok) {
+    revalidatePath("/paddock");
+    revalidatePath("/paddock/garage");
+  }
+  return result;
 }

@@ -136,6 +136,8 @@ describe("QuickRace — the pit wall", () => {
       seed: 424242,
       coinsEarned: 100,
       balance: 260,
+      carLevels: { power: 0, aero: 0, reliability: 0, pitCrew: 0 },
+      racesToday: 1,
     }));
     render(<QuickRace drivers={DRIVERS} runRace={runRace} />);
     await user.click(screen.getByRole("button", { name: /lights out/i }));

@@ -15,6 +15,12 @@ export const RACE_PAYOUT = [100, 70, 50, 35, 25, 20, 15, 10] as const;
 // than finishing it.
 export const RETIRED_PAYOUT = 5;
 
+// Paid races per rolling 24 hours (Josh's call, 2026-07-16: "cap users to 10
+// races per 24 hours for now"). The cap limits COINS, not racing — race
+// eleven still runs, locally and honestly unpaid. A sliding window needs no
+// cron and has no midnight; it just counts the log.
+export const DAILY_RACE_CAP = 10;
+
 export function racePayout(
   me: Pick<Classification, "position" | "retired">
 ): number {
