@@ -837,6 +837,21 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      buy_paddock_upgrade: {
+        Args: {
+          p_component: string
+          p_cost: number
+          p_from_level: number
+          p_user_id: string
+        }
+        Returns: {
+          car_aero: number
+          car_pit_crew: number
+          car_power: number
+          car_reliability: number
+          coins: number
+        }[]
+      }
       global_leaderboard: {
         Args: { p_limit?: number }
         Returns: {

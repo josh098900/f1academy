@@ -4,12 +4,13 @@ import { randomInt } from "node:crypto";
 
 import type { Json } from "@/db/types";
 import { getCurrentUser } from "@/lib/auth";
-import { racePayout } from "@/lib/paddock/economy";
+import { DAILY_RACE_CAP, racePayout } from "@/lib/paddock/economy";
 import {
   PADDOCK_LAPS,
   PADDOCK_TRACK_ID,
   runQuickRace,
 } from "@/lib/paddock/field";
+import { type CarLevels, ZERO_LEVELS } from "@/lib/paddock/garage";
 import { getDriverRatings } from "@/lib/paddock/ratings";
 import { COMPOUNDS, type Strategy } from "@/lib/race-sim";
 import { getCurrentSeason } from "@/lib/queries";
@@ -34,8 +35,27 @@ export type PaddockRaceSettlement =
       seed: number;
       coinsEarned: number;
       balance: number;
+      // The garage the server raced with — the client replays with EXACTLY
+      // these, so a purchase in another tab can't desync the broadcast from
+      // the banked result.
+      carLevels: CarLevels;
+      racesToday: number; // including this one
     }
-  | { ok: false; error: string };
+  | { ok: false; error: string; capped?: boolean };
+
+// Paid races in the rolling 24h window — the cap's counter. Shared by the
+// settlement (which enforces it) and the page (which displays it), and RLS
+// scopes the count to the calling user.
+export async function racesInLast24h(
+  supabase: Awaited<ReturnType<typeof createClient>>
+): Promise<number> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { count } = await supabase
+    .from("paddock_races")
+    .select("id", { count: "exact", head: true })
+    .gte("created_at", since);
+  return count ?? 0;
+}
 
 // The pit wall's slider ranges, mirrored. The UI can only produce these, so
 // anything outside them didn't come from the UI.
@@ -64,8 +84,34 @@ export async function settleQuickRace(
   }
 
   const supabase = await createClient();
+
+  // The cap, checked server-side, where it can't be talked out of.
+  const recentRaces = await racesInLast24h(supabase);
+  if (recentRaces >= DAILY_RACE_CAP) {
+    return {
+      ok: false,
+      capped: true,
+      error: `That's your ${DAILY_RACE_CAP} paid races for today — the pit lane reopens as they age past 24 hours.`,
+    };
+  }
+
   const season = await getCurrentSeason(supabase);
   if (!season) return { ok: false, error: "No season is running." };
+
+  // The garage this player actually owns — never trusted from the client.
+  const { data: team } = await supabase
+    .from("paddock_teams")
+    .select("car_power, car_aero, car_reliability, car_pit_crew")
+    .maybeSingle();
+  const carLevels: CarLevels = team
+    ? {
+        power: team.car_power,
+        aero: team.car_aero,
+        reliability: team.car_reliability,
+        pitCrew: team.car_pit_crew,
+      }
+    : ZERO_LEVELS;
+
   const drivers = await getDriverRatings(supabase, season.id);
 
   // The seed is the server's, never the client's — otherwise a player could
@@ -74,6 +120,7 @@ export async function settleQuickRace(
 
   const run = runQuickRace(drivers, driverId, strategy, seed, {
     captureFrames: false, // nobody watches this copy; the browser replays it
+    carLevels,
   });
   if (!run) return { ok: false, error: "That driver isn't on the grid." };
 
@@ -97,5 +144,12 @@ export async function settleQuickRace(
     return { ok: false, error: "The result couldn't be banked. Try again." };
   }
 
-  return { ok: true, seed, coinsEarned: coins, balance: balance ?? coins };
+  return {
+    ok: true,
+    seed,
+    coinsEarned: coins,
+    balance: balance ?? coins,
+    carLevels,
+    racesToday: recentRaces + 1,
+  };
 }

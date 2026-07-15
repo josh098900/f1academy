@@ -87,4 +87,29 @@ describe("runQuickRace — one race, wherever it runs", () => {
     expect(runQuickRace(DRIVERS, 999, PLAN, 1)).toBeNull();
     expect(runQuickRace(DRIVERS.slice(0, 5), 1, PLAN, 1)).toBeNull();
   });
+
+  it("scales the field to the garage you bring — nobody stomps stock NPCs", () => {
+    const stock = runQuickRace(DRIVERS, 1, PLAN, 555)!;
+    const upgraded = runQuickRace(DRIVERS, 1, PLAN, 555, {
+      // Full Silver everything: 40 total levels = rank 5.
+      carLevels: { power: 10, aero: 10, reliability: 10, pitCrew: 10 },
+    })!;
+    expect(stock.rank).toBe(1);
+    expect(upgraded.rank).toBe(5);
+
+    const myStock = stock.entrants.find((e) => e.isPlayer)!;
+    const myUpgraded = upgraded.entrants.find((e) => e.isPlayer)!;
+    expect(myStock.car.power).toBe(60);
+    expect(myUpgraded.car.power).toBeCloseTo(74);
+
+    // The rivals came to the fight: every rank-5 NPC car clearly outguns its
+    // rank-1 (stock) self — machinery only, driver ratings untouched.
+    for (const e of upgraded.entrants.filter((x) => !x.isPlayer)) {
+      const total =
+        e.car.power + e.car.aero + e.car.reliability + e.car.pitCrew;
+      expect(total).toBeGreaterThan(4 * 60 + 40);
+      const twin = stock.entrants.find((s) => s.id === e.id)!;
+      expect(twin.driver).toEqual(e.driver); // reality-derived, never scaled
+    }
+  });
 });

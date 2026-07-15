@@ -167,6 +167,13 @@ needed, recorded for completeness):
   a PostgREST write attempt with a player Bearer token should 401/403; the
   RPC is revoked from `authenticated` entirely. (Worth a one-off curl check
   on staging, like the leaderboard RPC verification above.)
+- **`buyPaddockUpgrade` server action** (Layer 3, added 2026-07-16 with the
+  garage): authenticates, reads own `paddock_teams`, prices the level in
+  code, then calls service-role-only RPC `buy_paddock_upgrade` — an atomic
+  compare-and-swap (row must still show the priced level and cover the
+  cost). `GET /paddock/garage` is a Layer-2 read of the same row. The race
+  settlement also now counts `paddock_races` in a rolling 24h window (the
+  10-race earning cap) before paying.
 
 ### 6. Realtime — out of gridload scope, but note the load
 

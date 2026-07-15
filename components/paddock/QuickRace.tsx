@@ -18,6 +18,7 @@ import {
   rankDrivers,
   runQuickRace,
 } from "@/lib/paddock/field";
+import { type CarLevels, ZERO_LEVELS } from "@/lib/paddock/garage";
 import type { RatedDriver } from "@/lib/paddock/ratings";
 import type { PaddockRaceSettlement } from "@/lib/paddock/settle";
 import { type Strategy, type Tuning } from "@/lib/race-sim";
@@ -63,6 +64,7 @@ const CLIFF = { soft: 0.7, medium: 0.8, hard: 0.88 } as const;
 export function QuickRace({
   drivers,
   runRace,
+  carLevels = ZERO_LEVELS,
 }: {
   drivers: RatedDriver[];
   // The server action that mints the seed and banks the payout. Optional so
@@ -71,6 +73,10 @@ export function QuickRace({
     driverId: number;
     strategy: Strategy;
   }) => Promise<PaddockRaceSettlement>;
+  // The player's garage, for local (unpaid) races and the pit-wall display.
+  // Paid races replay with the levels the SERVER echoes back, so a purchase
+  // in another tab can never desync the broadcast from the banked result.
+  carLevels?: CarLevels;
 }) {
   const router = useRouter();
   const ranked = useMemo(() => rankDrivers(drivers), [drivers]);
@@ -82,7 +88,9 @@ export function QuickRace({
   const [settled, setSettled] = useState<{
     coins: number;
     balance: number;
+    racesToday: number;
   } | null>(null);
+  const [settleError, setSettleError] = useState<string | null>(null);
   const [starting, startTransition] = useTransition();
 
   // The plan the player has actually COMMITTED to. Nothing is simulated until
@@ -99,6 +107,7 @@ export function QuickRace({
     strategy: Strategy;
     seed: number;
     shakedown: boolean;
+    carLevels: CarLevels;
   } | null>(null);
 
   const race = useMemo(() => {
@@ -108,7 +117,10 @@ export function QuickRace({
       committed.driverId,
       committed.strategy,
       committed.seed,
-      { tuning: committed.shakedown ? SHAKEDOWN_TUNING : undefined }
+      {
+        tuning: committed.shakedown ? SHAKEDOWN_TUNING : undefined,
+        carLevels: committed.carLevels,
+      }
     );
   }, [ranked, committed]);
 
@@ -129,6 +141,7 @@ export function QuickRace({
     );
     setShowResult(false);
     setSettled(null);
+    setSettleError(null);
 
     // Shakedown races run test tuning the server would never settle, and
     // tests have no server at all — both race locally, unpaid. (Math.random
@@ -140,6 +153,7 @@ export function QuickRace({
         strategy,
         seed: Math.floor(Math.random() * 1e9),
         shakedown,
+        carLevels,
       });
       setPhase("quali");
       return;
@@ -148,20 +162,29 @@ export function QuickRace({
     startTransition(async () => {
       const res = await runRace({ driverId, strategy });
       if (res.ok) {
-        setSettled({ coins: res.coinsEarned, balance: res.balance });
+        setSettled({
+          coins: res.coinsEarned,
+          balance: res.balance,
+          racesToday: res.racesToday,
+        });
         setCommitted({
           driverId,
           strategy,
           seed: res.seed,
           shakedown: false,
+          // Replay with the garage the SERVER raced, not the page's copy.
+          carLevels: res.carLevels,
         });
       } else {
-        // The economy must never block the racing: race locally, unpaid.
+        // The economy must never block the racing: race locally, unpaid —
+        // and say why it's unpaid on the result screen.
+        setSettleError(res.error);
         setCommitted({
           driverId,
           strategy,
           seed: Math.floor(Math.random() * 1e9),
           shakedown: false,
+          carLevels,
         });
       }
       setPhase("quali");
@@ -343,7 +366,8 @@ export function QuickRace({
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <p className="font-mono text-xs tracking-wider text-secondary uppercase">
           {me.shortName} · qualified{" "}
-          <span className="text-accent">P{myGrid}</span> · Silverstone
+          <span className="text-accent">P{myGrid}</span> · Silverstone ·{" "}
+          rank {race.rank} field
         </p>
         {committed?.shakedown && (
           <span className="border border-warning/50 px-2 py-0.5 font-mono text-[10px] tracking-wider text-warning uppercase">
@@ -406,13 +430,17 @@ export function QuickRace({
             {settled ? (
               <>
                 <span className="text-accent">+{settled.coins} coins</span>
-                <span className="text-muted"> · balance {settled.balance}</span>
+                <span className="text-muted">
+                  {" "}
+                  · balance {settled.balance} · race {settled.racesToday}/10
+                  today
+                </span>
               </>
             ) : (
               <span className="text-muted">
                 {committed?.shakedown
                   ? "Shakedown race — no payout"
-                  : "Result not banked — no payout this time"}
+                  : (settleError ?? "Result not banked — no payout this time")}
               </span>
             )}
           </p>
