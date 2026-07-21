@@ -5,7 +5,7 @@ struct ContentView: View {
   var body: some View {
     Group {
       if auth.isSignedIn {
-        LeaderboardView()
+        RootTabView()
       } else {
         LoginView()
       }
