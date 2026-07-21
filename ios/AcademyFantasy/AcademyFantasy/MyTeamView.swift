@@ -9,16 +9,22 @@ struct MyTeamView: View {
   @State private var team: SavedTeam?
   @State private var loading = true
   @State private var errorText: String?
+  @State private var picking = false
 
   var body: some View {
     NavigationStack {
       Group {
-        if loading {
+        // Once a round is loaded, ALWAYS show the list — a pull-to-refresh
+        // must not swap it out for a spinner, or it tears down the very
+        // refresh control driving the gesture (which cancels the task). The
+        // full-screen spinner is only for the first load, when there's no
+        // list yet; refreshes get the pull indicator instead.
+        if let round {
+          teamList(round)
+        } else if loading {
           ProgressView()
         } else if let errorText {
           Text(errorText).foregroundStyle(.red).padding()
-        } else if let round {
-          teamList(round)
         } else {
           Text("No round is open for selection right now.")
             .foregroundStyle(.secondary)
@@ -26,9 +32,33 @@ struct MyTeamView: View {
         }
       }
       .navigationTitle("My Team")
+      .toolbar {
+        Button(team == nil ? "Pick" : "Edit") { picking = true }
+          .disabled(!canEdit)
+      }
+      .sheet(isPresented: $picking) {
+        if let round {
+          TeamPickerView(
+            round: round,
+            lineup: lineup,
+            existing: team,
+            onSaved: { Task { await load() } }
+          )
+        }
+      }
       .task { await load() }
       .refreshable { await load() }
     }
+  }
+
+  // You can only edit an open round you have a lineup for. A locked round
+  // (or one with no prices yet) hides the button — the server would refuse
+  // the save anyway, but there's no reason to offer it.
+  private var canEdit: Bool {
+    guard let round, !lineup.isEmpty else { return false }
+    guard let raw = round.lockTime else { return true }
+    guard let date = ISO8601DateFormatter().date(from: raw) else { return true }
+    return date > Date()
   }
 
   @ViewBuilder

@@ -50,4 +50,30 @@ enum FantasyService {
       .value
     return rows.first
   }
+
+  // The one WRITE: commit the team through the Next API, which re-validates it
+  // against live prices (budget, eligibility, transfers, lock) — the client is
+  // never trusted to. Throws with the server's message on rejection.
+  static func saveTeam(
+    driverIds: [Int],
+    boostDriverId: Int,
+    wildcard: Bool = false
+  ) async throws {
+    try await APIClient.post(
+      "/api/team",
+      body: SaveTeamBody(
+        driverIds: driverIds,
+        boostDriverId: boostDriverId,
+        wildcard: wildcard
+      )
+    )
+  }
+}
+
+// Body keys are camelCase to match exactly what the route reads
+// (body.driverIds, body.boostDriverId, body.wildcard).
+private struct SaveTeamBody: Encodable {
+  let driverIds: [Int]
+  let boostDriverId: Int
+  let wildcard: Bool
 }
