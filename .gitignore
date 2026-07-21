@@ -51,3 +51,15 @@ scripts/race-wrap-email.ts
 
 # gridload run artifacts (large, machine-specific)
 loadtest/results/
+
+# --- iOS app (ios/) ---------------------------------------------------------
+# Xcode build output and per-user state — never shared.
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+ios/**/DerivedData/
+ios/**/build/
+ios/**/.swiftpm/
+# The filled-in config (URL + publishable key). Copied from Config.example.swift
+# on each machine, exactly like .env.local. The key is public-by-design, but we
+# keep the repo clean and the pattern consistent.
+ios/**/Config.swift
