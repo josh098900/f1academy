@@ -183,6 +183,23 @@ needed, recorded for completeness):
   Layer-2 read. Settlement now also reads own `paddock_contracts` to enforce
   the drivable set (free seats + signatures).
 
+### 6b. Native write API (added 2026-07-21) — the mobile write path
+
+The iOS app reads direct-from-Supabase (RLS) but cannot be trusted to write
+the fantasy team, so writes go through a **Bearer-authenticated Next route**:
+
+- **`POST /api/team`** — the native equivalent of the `saveTeam` Server
+  Action, wrapping the same `saveTeamFor` core (one validation surface, three
+  callers: web action, load-test route, native). Auth is
+  `lib/api/bearer-auth.ts` → `authenticateBearer()`: per-request supabase-js
+  client carrying `Authorization: Bearer <access_token>`, verified with
+  `getUser()` (round-trip, immediate revocation — the mutation posture).
+  RLS + the `enforce_team_rules` trigger backstop it exactly as for the UI.
+- No CORS needed — native `URLSession` isn't subject to it.
+- This is the same shape as the load-test `save-team` route (§5 option B),
+  but ungated and production. Future native writes (racing settlement, garage)
+  reuse `authenticateBearer` and add their own route.
+
 ### 6. Realtime — out of gridload scope, but note the load
 
 Every leaderboard/league page mounts `<RealtimeRefresh>`
