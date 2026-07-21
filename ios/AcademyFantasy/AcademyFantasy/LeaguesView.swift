@@ -66,10 +66,17 @@ struct LeagueStandingsView: View {
   @State private var loading = true
 
   var body: some View {
-    List(rows) { row in
-      StandingRowView(row: row, isMe: row.userId == auth.userId)
+    ScrollView {
+      LazyVStack(spacing: 0) {
+        ForEach(rows) { row in
+          StandingRowView(row: row, isMe: row.userId == auth.userId)
+        }
+      }
     }
-    .overlay { if loading { ProgressView() } }
+    .background(Theme.Palette.base)
+    .overlay {
+      if loading { ProgressView().tint(Theme.Palette.accent) }
+    }
     .navigationTitle(league.name)
     .navigationBarTitleDisplayMode(.inline)
     .task { await load() }
