@@ -29,6 +29,7 @@ struct MyTeamView: View {
             round: round,
             lineup: lineup,
             existing: team,
+            partnerMap: partnerMap,
             onSaved: { Task { await load() } }
           )
         }
