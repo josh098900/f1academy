@@ -11,26 +11,32 @@ struct LeaguesView: View {
 
   var body: some View {
     NavigationStack {
-      Group {
+      ZStack {
+        Theme.Palette.base.ignoresSafeArea()
+
         if loading {
-          ProgressView()
+          ProgressView().tint(Theme.Palette.accent)
         } else if leagues.isEmpty {
-          VStack(spacing: 8) {
-            Image(systemName: "person.3")
-              .font(.largeTitle)
-              .foregroundStyle(.secondary)
+          VStack(spacing: 10) {
             Text("No leagues yet")
-              .font(.headline)
+              .font(AppFont.display(30))
+              .foregroundStyle(Theme.Palette.primary)
             Text("Join a league on the website to see it here.")
-              .font(.footnote)
-              .foregroundStyle(.secondary)
+              .font(AppFont.body(13))
+              .foregroundStyle(Theme.Palette.secondary)
               .multilineTextAlignment(.center)
           }
-          .padding()
+          .padding(28)
         } else {
-          List(leagues) { league in
-            NavigationLink(league.name) {
-              LeagueStandingsView(league: league)
+          ScrollView {
+            LazyVStack(spacing: 0) {
+              ForEach(leagues) { league in
+                NavigationLink {
+                  LeagueStandingsView(league: league)
+                } label: {
+                  leagueRow(league)
+                }
+              }
             }
           }
         }
@@ -38,6 +44,25 @@ struct LeaguesView: View {
       .navigationTitle("Leagues")
       .task { await load() }
       .refreshable { await load() }
+    }
+  }
+
+  private func leagueRow(_ league: League) -> some View {
+    HStack {
+      Text(league.name)
+        .font(AppFont.body(16))
+        .foregroundStyle(Theme.Palette.primary)
+      Spacer()
+      Image(systemName: "chevron.right")
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(Theme.Palette.muted)
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 15)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .contentShape(Rectangle())
+    .overlay(alignment: .bottom) {
+      Rectangle().fill(Theme.Palette.borderDefault).frame(height: 1)
     }
   }
 
