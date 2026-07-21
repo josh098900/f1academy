@@ -9,6 +9,7 @@ import Foundation
 
 struct Round: Codable, Identifiable {
   let id: Int
+  let seasonId: Int
   let roundNumber: Int
   let country: String?
   let circuitName: String?
@@ -16,10 +17,23 @@ struct Round: Codable, Identifiable {
 
   enum CodingKeys: String, CodingKey {
     case id
+    case seasonId = "season_id"
     case roundNumber = "round_number"
     case country
     case circuitName = "circuit_name"
     case lockTime = "lock_time"
+  }
+}
+
+// A driver's entry for a season — we read it only for the F1 partner team,
+// which drives the team-colour bar on driver cards.
+struct SeasonEntry: Codable {
+  let driverId: Int
+  let f1PartnerTeam: String?
+
+  enum CodingKeys: String, CodingKey {
+    case driverId = "driver_id"
+    case f1PartnerTeam = "f1_partner_team"
   }
 }
 

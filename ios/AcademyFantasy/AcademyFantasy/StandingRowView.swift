@@ -1,30 +1,38 @@
 import SwiftUI
 
 // One line of a standings table, shared by the leaderboard and league views.
-// When it's you, it tints and says so — the single most-wanted feature of any
-// leaderboard is "where am I?".
+// The rank is a hero numeral (Bebas), points are tabular mono (JetBrains), and
+// when it's you the whole row tints magenta — the design's current-user accent.
+// Container-agnostic: it paints its own full-width band + hairline, so it drops
+// into a LazyVStack without a List's insets fighting the edge-to-edge look.
 struct StandingRowView: View {
   let row: StandingRow
   var isMe: Bool = false
 
   var body: some View {
-    HStack(spacing: 12) {
+    HStack(spacing: 14) {
       Text("\(row.rank)")
-        .frame(width: 32, alignment: .leading)
-        .foregroundStyle(.secondary)
-        .monospacedDigit()
+        .font(AppFont.display(28))
+        .foregroundStyle(isMe ? Theme.Palette.accent : Theme.Palette.secondary)
+        .frame(minWidth: 38, alignment: .leading)
+
       Text(row.displayName ?? "—")
-        .fontWeight(isMe ? .semibold : .regular)
-      if isMe {
-        Text("you")
-          .font(.caption2)
-          .foregroundStyle(.secondary)
-      }
-      Spacer()
+        .font(AppFont.body(16))
+        .foregroundStyle(isMe ? Theme.Palette.accent : Theme.Palette.primary)
+        .lineLimit(1)
+
+      Spacer(minLength: 8)
+
       Text("\(row.total)")
-        .monospacedDigit()
-        .bold()
+        .font(AppFont.mono(16))
+        .foregroundStyle(Theme.Palette.primary)
     }
-    .listRowBackground(isMe ? Color.accentColor.opacity(0.12) : nil)
+    .padding(.horizontal, 16)
+    .padding(.vertical, 11)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(isMe ? Theme.Palette.accentMuted : Color.clear)
+    .overlay(alignment: .bottom) {
+      Rectangle().fill(Theme.Palette.borderDefault).frame(height: 1)
+    }
   }
 }
