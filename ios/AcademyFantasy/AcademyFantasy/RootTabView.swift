@@ -5,6 +5,8 @@ import SwiftUI
 struct RootTabView: View {
   var body: some View {
     TabView {
+      MyTeamView()
+        .tabItem { Label("Team", systemImage: "flag.checkered") }
       LeaderboardView()
         .tabItem { Label("Leaderboard", systemImage: "trophy") }
       LeaguesView()

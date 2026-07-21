@@ -14,6 +14,11 @@ import Supabase
 enum Config {
   static let supabaseURL = URL(string: "https://YOUR-PROJECT.supabase.co")!
   static let supabaseAnonKey = "<YOUR_SUPABASE_ANON_KEY>"
+
+  // Base URL of the Next.js app, for the write API (POST /api/team, etc.).
+  // Your production URL; point at a LAN address to test a local dev server
+  // from a real device (`localhost` won't resolve from the phone).
+  static let apiBaseURL = URL(string: "https://YOUR-APP.vercel.app")!
 }
 
 // One shared client for the whole app. Direct-to-Supabase for auth, RLS reads
