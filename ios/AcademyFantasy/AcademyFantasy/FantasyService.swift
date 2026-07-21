@@ -16,13 +16,30 @@ enum FantasyService {
   static func activeRound() async throws -> Round? {
     let rows: [Round] = try await supabase
       .from("rounds")
-      .select("id, round_number, country, circuit_name, lock_time")
+      .select("id, season_id, round_number, country, circuit_name, lock_time")
       .eq("status", value: "upcoming")
       .order("round_number", ascending: true)
       .limit(1)
       .execute()
       .value
     return rows.first
+  }
+
+  // driver_id → F1 partner team, for the season. Drives the team-colour bar.
+  // (Read separately from the lineup and looked up by id — same data the web's
+  // getRoundLineup joins in.)
+  static func partnerMap(seasonId: Int) async throws -> [Int: String] {
+    let entries: [SeasonEntry] = try await supabase
+      .from("season_entries")
+      .select("driver_id, f1_partner_team")
+      .eq("season_id", value: seasonId)
+      .execute()
+      .value
+    var map: [Int: String] = [:]
+    for entry in entries {
+      if let partner = entry.f1PartnerTeam { map[entry.driverId] = partner }
+    }
+    return map
   }
 
   // Every driver priced for the round, with names — the pool you pick from.
