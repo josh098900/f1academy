@@ -42,6 +42,22 @@ For the code to appear in the email, the template must include the token:
 > ⚠️ Gotcha from the web setup: toggling custom SMTP **resets** these
 > templates. If you ever re-toggle SMTP, re-add `{{ .Token }}`.
 
+### Google sign-in (the fast path for testing)
+
+`AuthManager.signInWithGoogle()` uses the SDK's built-in
+`signInWithOAuth(.google)`, which runs the whole OAuth flow inside an
+`ASWebAuthenticationSession`. That session captures its own callback, so
+**no Info.plist URL scheme is needed** — the only setup is one allow-list entry:
+
+1. Supabase dashboard → **Authentication → URL Configuration → Redirect URLs**.
+2. Add exactly: `academyfantasy://login-callback`
+3. Save.
+
+The Google provider itself is already enabled (the website uses it), so
+there's no Google Cloud work to do. **The session persists** to the Keychain
+after any sign-in, so you only authenticate once — `restore()` picks it up on
+every later launch, and you land straight on the app.
+
 ### Xcode setup, step by step
 
 1. **Create the project.** Xcode → File → New → Project → iOS → **App** →

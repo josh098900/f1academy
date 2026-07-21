@@ -15,6 +15,20 @@ struct LoginView: View {
     VStack(spacing: 16) {
       Text("Academy Fantasy").font(.largeTitle.bold())
 
+      // The quick path — one tap, no waiting for an email.
+      Button {
+        Task { await auth.signInWithGoogle() }
+      } label: {
+        Text("Continue with Google").frame(maxWidth: .infinity)
+      }
+      .buttonStyle(.borderedProminent)
+      .controlSize(.large)
+
+      Text("or sign in by email")
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .padding(.top, 8)
+
       if !auth.awaitingCode {
         TextField("you@email.com", text: $auth.email)
           .textFieldStyle(.roundedBorder)
