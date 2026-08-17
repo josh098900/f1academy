@@ -7,6 +7,7 @@ import {
   qualifyingPoints,
   raceScore,
   racePoints,
+  scoreDriverRounds,
   scoreDriverWeekend,
   type DriverSession,
 } from "../lib/scoring";
@@ -248,5 +249,38 @@ describe("lastRacePodium — the cross-round streak bridge", () => {
     });
     expect(withBridge.podiumStreak).toBe(3);
     expect(withBridge.base - without.base).toBe(3);
+  });
+});
+
+describe("scoreDriverRounds — the shared season replay walk", () => {
+  // Round that ends on a podium (final race P3) → bridges out.
+  const podiumOut = [quali(4), race("race1", 9, 6), race("race2", 3, 5)];
+  // Round that opens with a podium (race1 P3) → receives the bridge.
+  const podiumIn = [quali(3), race("race1", 3, 6)];
+  const inNoBridge = scoreDriverWeekend({ sessions: podiumIn }).base;
+
+  it("bridges a podium from the immediately-previous round", () => {
+    const pts = scoreDriverRounds([podiumOut, podiumIn]);
+    expect(pts[0]).toBe(scoreDriverWeekend({ sessions: podiumOut }).base);
+    // The second round's score gains exactly the streak bonus from the bridge.
+    expect(pts[1]).toBe(inNoBridge + 3);
+  });
+
+  it("never bridges the first round (no incoming)", () => {
+    expect(scoreDriverRounds([podiumIn])[0]).toBe(inNoBridge);
+  });
+
+  it("returns null for a round she didn't race, and that breaks the bridge", () => {
+    const pts = scoreDriverRounds([[], podiumIn]);
+    expect(pts[0]).toBeNull();
+    expect(pts[1]).toBe(inNoBridge); // no bridge from a sat-out round
+  });
+
+  it("a gap round between two raced rounds breaks the bridge", () => {
+    expect(scoreDriverRounds([podiumOut, [], podiumIn])).toEqual([
+      scoreDriverWeekend({ sessions: podiumOut }).base,
+      null,
+      inNoBridge, // the empty middle round severs podiumOut → podiumIn
+    ]);
   });
 });
