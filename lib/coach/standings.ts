@@ -3,11 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/db/types";
-import {
-  type DriverSession,
-  lastRacePodium,
-  scoreDriverWeekend,
-} from "@/lib/scoring";
+import { type DriverSession, scoreDriverRounds } from "@/lib/scoring";
 
 type DB = SupabaseClient<Database>;
 
@@ -77,15 +73,16 @@ export async function getDriverPoints(
     perRound[idx].set(r.driver_id, arr);
   }
 
-  for (let idx = 0; idx < perRound.length; idx++) {
-    for (const [driverId, sess] of perRound[idx]) {
-      const base = scoreDriverWeekend({
-        sessions: sess,
-        incomingPodium:
-          idx > 0 && lastRacePodium(perRound[idx - 1].get(driverId) ?? []),
-      }).base;
-      points.set(driverId, (points.get(driverId) ?? 0) + base);
-    }
+  // Every driver who raced any of these rounds, scored through the shared
+  // bridge-aware walk and summed across the season.
+  const driverIds = new Set<number>();
+  for (const round of perRound) for (const id of round.keys()) driverIds.add(id);
+
+  for (const driverId of driverIds) {
+    const total = scoreDriverRounds(
+      perRound.map((r) => r.get(driverId) ?? [])
+    ).reduce<number>((sum, p) => sum + (p ?? 0), 0);
+    points.set(driverId, total);
   }
 
   return points;

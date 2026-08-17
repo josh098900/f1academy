@@ -4,8 +4,7 @@ import type { Database } from "@/db/types";
 import {
   type DriverSession,
   type SessionType,
-  lastRacePodium,
-  scoreDriverWeekend,
+  scoreDriverRounds,
 } from "@/lib/scoring";
 
 type DB = SupabaseClient<Database>;
@@ -523,21 +522,15 @@ export async function getSeasonForm(
     perRound[idx].set(r.driver_id, arr);
   }
 
-  for (let idx = 0; idx < perRound.length; idx++) {
-    for (const [driverId, sess] of perRound[idx]) {
-      const points = scoreDriverWeekend({
-        sessions: sess,
-        // Bridge from the previous round's final race, exactly as the real
-        // scorer does — otherwise bridged weekends display 3 points low.
-        incomingPodium:
-          idx > 0 && lastRacePodium(perRound[idx - 1].get(driverId) ?? []),
-      }).base;
-      const arr =
-        form.byDriver[driverId] ??
-        (form.byDriver[driverId] = Array(rounds.length).fill(null));
-      arr[idx] = points;
-      if (points > form.max) form.max = points;
-    }
+  // Every driver who raced any of these rounds; score each one's rounds through
+  // the shared bridge-aware walk (identical to the profile page and Coach).
+  const driverIds = new Set<number>();
+  for (const round of perRound) for (const id of round.keys()) driverIds.add(id);
+
+  for (const driverId of driverIds) {
+    const points = scoreDriverRounds(perRound.map((r) => r.get(driverId) ?? []));
+    form.byDriver[driverId] = points;
+    for (const p of points) if (p !== null && p > form.max) form.max = p;
   }
 
   return form;
@@ -652,19 +645,12 @@ export async function getDriverProfile(
         byRound.set(roundId, arr);
       }
 
-      const order = ["qualifying", "race1", "race2", "race3"];
-      // Sessions from the immediately previous round — the cross-round podium
-      // bridge is strictly adjacent, so it resets when she skipped a round.
-      let prevRoundSessions: DriverSession[] = [];
-      for (const round of rounds) {
+      // Her sessions for each completed round, in order (empty where she sat
+      // out). The shared walk scores every round with the cross-round podium
+      // bridge — the same kernel the form sparklines and Coach standings use.
+      const perRound: DriverSession[][] = rounds.map((round) => {
         const roundResults = byRound.get(round.id) ?? [];
-        if (roundResults.length === 0) {
-          prevRoundSessions = [];
-          continue;
-        }
-
         const driverSessions: DriverSession[] = [];
-        const summary: DriverRoundResult["sessions"] = [];
         for (const r of roundResults) {
           const type = sessionMeta.get(r.session_id)?.type;
           if (!type) continue;
@@ -675,27 +661,29 @@ export async function getDriverProfile(
             status: r.status as DriverSession["status"],
             fastestLap: r.fastest_lap,
           });
-          summary.push({
-            type: type as SessionType,
-            position: r.position,
-            fastestLap: r.fastest_lap,
-          });
         }
+        return driverSessions;
+      });
 
-        const points = scoreDriverWeekend({
-          sessions: driverSessions,
-          incomingPodium: lastRacePodium(prevRoundSessions),
-        }).base;
-        prevRoundSessions = driverSessions;
-        seasonPoints += points;
+      const points = scoreDriverRounds(perRound);
+      const order = ["qualifying", "race1", "race2", "race3"];
+      rounds.forEach((round, idx) => {
+        const pts = points[idx];
+        if (pts === null) return; // didn't race this round
+        const summary: DriverRoundResult["sessions"] = perRound[idx].map((s) => ({
+          type: s.type as SessionType,
+          position: s.position,
+          fastestLap: s.fastestLap,
+        }));
         summary.sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
+        seasonPoints += pts;
         history.push({
           roundNumber: round.round_number,
           circuitName: round.circuit_name ?? `Round ${round.round_number}`,
-          points,
+          points: pts,
           sessions: summary,
         });
-      }
+      });
     }
   }
 

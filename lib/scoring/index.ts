@@ -179,3 +179,27 @@ export function scoreDriverWeekend(input: WeekendInput): WeekendScore {
     total: boost ? base * 2 : base,
   };
 }
+
+// Replay one driver's completed rounds in order, scoring each weekend with the
+// cross-round podium bridge wired exactly as the live scorer does: the previous
+// round's final race feeds the next round's `incomingPodium`, and a round she
+// sat out breaks the bridge. `perRound` is ascending and index-aligned to the
+// round list — pass `[]` for a round she didn't race. Returns her base points
+// (no boost) per round, `null` where she didn't race.
+//
+// This is the single home for the "replay with bridge" walk. Every aggregation
+// that used to hand-roll it — driver profiles, form sparklines, Coach
+// standings, price recalibration — calls this instead, so none of them can
+// drift from each other or from the real scorer (lib/scoring/run.ts).
+export function scoreDriverRounds(
+  perRound: DriverSession[][]
+): (number | null)[] {
+  return perRound.map((sessions, i) => {
+    if (sessions.length === 0) return null; // didn't race this round
+    const previous = i > 0 ? perRound[i - 1] : [];
+    return scoreDriverWeekend({
+      sessions,
+      incomingPodium: lastRacePodium(previous),
+    }).base;
+  });
+}
