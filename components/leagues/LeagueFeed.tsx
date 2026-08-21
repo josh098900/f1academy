@@ -63,6 +63,7 @@ export function LeagueFeed({
 }) {
   return (
     <div className="space-y-4">
+      <FeedRealtime leagueId={leagueId} />
       <Composer leagueId={leagueId} />
       {posts.length === 0 ? (
         <p className="py-8 text-center font-body text-sm text-muted">
@@ -83,6 +84,43 @@ export function LeagueFeed({
       )}
     </div>
   );
+}
+
+// Live freshness: refresh the server-rendered feed when anything in this
+// league's posts/replies/likes changes. RLS scopes the events to leagues the
+// viewer belongs to (replies/likes carry no league_id, so they aren't filtered
+// server-side — a cross-league event just triggers a harmless refetch).
+// Debounced, since one action can emit several row changes. Mirrors
+// components/RealtimeRefresh.
+function FeedRealtime({ leagueId }: { leagueId: number }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    const supabase = createClient();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const bump = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => router.refresh(), 500);
+    };
+
+    const channel = supabase
+      .channel(`league-feed-${leagueId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "league_posts", filter: `league_id=eq.${leagueId}` },
+        bump
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "league_post_replies" }, bump)
+      .on("postgres_changes", { event: "*", schema: "public", table: "league_post_likes" }, bump)
+      .subscribe();
+
+    return () => {
+      clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [leagueId, router]);
+
+  return null;
 }
 
 function Composer({ leagueId }: { leagueId: number }) {
