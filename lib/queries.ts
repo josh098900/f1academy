@@ -703,3 +703,71 @@ export async function getDriverProfile(
     history,
   };
 }
+
+// ---------------------------------------------------------------------------
+// League social feed — reads go through the SECURITY DEFINER RPCs (league_feed
+// / league_post_thread), which resolve author names and enforce membership.
+// ---------------------------------------------------------------------------
+
+export type FeedPost = {
+  id: number;
+  authorId: string | null; // null for system posts
+  authorName: string | null;
+  body: string;
+  isSystem: boolean;
+  systemKind: string | null;
+  createdAt: string;
+  likeCount: number;
+  replyCount: number;
+  likedByMe: boolean;
+};
+
+// One page of a league's feed, newest first. RLS-gated inside the RPC, so a
+// non-member gets an empty list.
+export async function getLeagueFeed(
+  supabase: DB,
+  leagueId: number,
+  limit = 20,
+  offset = 0
+): Promise<FeedPost[]> {
+  const { data } = await supabase
+    .rpc("league_feed", { p_league: leagueId, p_limit: limit, p_offset: offset })
+    .throwOnError();
+  return (data ?? []).map((r) => ({
+    id: Number(r.id),
+    authorId: r.author_id,
+    authorName: r.author_name,
+    body: r.body,
+    isSystem: r.is_system,
+    systemKind: r.system_kind,
+    createdAt: r.created_at,
+    likeCount: Number(r.like_count),
+    replyCount: Number(r.reply_count),
+    likedByMe: r.liked_by_me,
+  }));
+}
+
+export type FeedReply = {
+  id: number;
+  authorId: string | null;
+  authorName: string | null;
+  body: string;
+  createdAt: string;
+};
+
+// The flat reply thread under one post, oldest first.
+export async function getPostThread(
+  supabase: DB,
+  postId: number
+): Promise<FeedReply[]> {
+  const { data } = await supabase
+    .rpc("league_post_thread", { p_post: postId })
+    .throwOnError();
+  return (data ?? []).map((r) => ({
+    id: Number(r.id),
+    authorId: r.author_id,
+    authorName: r.author_name,
+    body: r.body,
+    createdAt: r.created_at,
+  }));
+}
