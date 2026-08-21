@@ -7,6 +7,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/db/types";
+import { announceRoundScored } from "@/lib/social/system";
 
 import type { DriverSession, SessionType } from "./index";
 import { scoreUserRound } from "./round";
@@ -135,11 +136,13 @@ export async function runScoreRound(
 ): Promise<ScoreRoundResult> {
   const { data: round } = await db
     .from("rounds")
-    .select("id, season_id, round_number")
+    .select("id, season_id, round_number, status, circuit_name")
     .eq("id", roundId)
     .maybeSingle()
     .throwOnError();
   if (!round) return { ok: false, error: "Round not found." };
+  // Announce only on the first completion, so a re-score doesn't re-post.
+  const wasComplete = round.status === "complete";
 
   const { data: sessions } = await db
     .from("sessions")
@@ -202,5 +205,20 @@ export async function runScoreRound(
     teams.map((t) => t.user_id)
   );
   await markComplete();
+
+  if (!wasComplete) {
+    // Seed every league's feed with the round result — best-effort, never let a
+    // feed hiccup fail a successful scoring run.
+    try {
+      await announceRoundScored(db, {
+        seasonId: round.season_id,
+        roundNumber: round.round_number,
+        circuitName: round.circuit_name,
+      });
+    } catch {
+      // ignore — scoring already succeeded
+    }
+  }
+
   return { ok: true, scored: rows.length };
 }

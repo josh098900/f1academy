@@ -195,6 +195,30 @@ async function main() {
   const p1StillThere = (await service.from("league_posts").select("id").eq("id", p1).maybeSingle()).data;
   check("non-author member cannot delete another's post", (carolDelOther.data ?? []).length === 0 && !!p1StillThere);
 
+  console.log("\nSystem posts (service role only):");
+  const sysIns = await service
+    .from("league_posts")
+    .insert({
+      league_id: leagueX,
+      author_id: null,
+      is_system: true,
+      system_kind: "round_scored",
+      body: "🏁 Round 1 scored.",
+    })
+    .select("id")
+    .single();
+  check("service role can insert a system post", !sysIns.error, sysIns.error?.message);
+  const feedSys = await alice.client.rpc("league_feed", { p_league: leagueX });
+  const sysRow = (feedSys.data ?? []).find((r) => r.id === sysIns.data?.id);
+  check(
+    "system post surfaces in the feed (is_system, no author)",
+    !!sysRow &&
+      sysRow.is_system === true &&
+      sysRow.author_id === null &&
+      sysRow.author_name === null &&
+      sysRow.system_kind === "round_scored"
+  );
+
   console.log("\nNon-member (Bob) — locked out:");
   const feedB = await bob.client.rpc("league_feed", { p_league: leagueX });
   check("non-member's feed RPC returns nothing", !feedB.error && (feedB.data ?? []).length === 0);

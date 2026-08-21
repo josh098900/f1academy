@@ -3,12 +3,14 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   POST_RATE_LIMIT,
   REPLY_RATE_LIMIT,
   validatePostBody,
   validateReplyBody,
 } from "@/lib/social";
+import { announceMemberJoined } from "@/lib/social/system";
 
 const MAX_LEAGUES = 5;
 
@@ -98,12 +100,45 @@ export async function joinLeague(code: string): Promise<JoinLeagueResult> {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "You're not signed in." };
 
-  const { data, error } = await supabase.rpc("join_league", {
-    p_code: code.trim().toUpperCase(),
-  });
+  const normalized = code.trim().toUpperCase();
+
+  // join_league is idempotent (re-joining is a no-op but still returns the
+  // league), so we check membership up front — via the admin client, since RLS
+  // hides leagues you're not in — to only welcome a genuine new join.
+  const admin = createAdminClient();
+  const { data: league } = await admin
+    .from("leagues")
+    .select("id")
+    .eq("invite_code", normalized)
+    .maybeSingle();
+  let wasMember = false;
+  if (league) {
+    const { count } = await admin
+      .from("league_members")
+      .select("*", { count: "exact", head: true })
+      .eq("league_id", league.id)
+      .eq("user_id", user.id);
+    wasMember = (count ?? 0) > 0;
+  }
+
+  const { data, error } = await supabase.rpc("join_league", { p_code: normalized });
   if (error) return { ok: false, error: error.message };
   const row = data?.[0];
   if (!row) return { ok: false, error: "League not found." };
+
+  if (!wasMember) {
+    // Best-effort welcome post — never fail the join over a feed hiccup.
+    try {
+      const { data: profile } = await supabase
+        .from("users")
+        .select("display_name")
+        .eq("id", user.id)
+        .maybeSingle();
+      await announceMemberJoined(admin, row.id, profile?.display_name ?? "A new player");
+    } catch {
+      // ignore — the join succeeded
+    }
+  }
 
   revalidatePath("/leagues");
   return { ok: true, id: row.id, name: row.name };
