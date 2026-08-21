@@ -226,6 +226,123 @@ export type Database = {
           },
         ]
       }
+      league_post_likes: {
+        Row: {
+          created_at: string
+          post_id: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          post_id: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          post_id?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "league_post_likes_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "league_posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_post_likes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      league_post_replies: {
+        Row: {
+          author_id: string | null
+          body: string
+          created_at: string
+          id: number
+          post_id: number
+        }
+        Insert: {
+          author_id?: string | null
+          body: string
+          created_at?: string
+          id?: number
+          post_id: number
+        }
+        Update: {
+          author_id?: string | null
+          body?: string
+          created_at?: string
+          id?: number
+          post_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "league_post_replies_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_post_replies_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "league_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      league_posts: {
+        Row: {
+          author_id: string | null
+          body: string
+          created_at: string
+          id: number
+          is_system: boolean
+          league_id: number
+          system_kind: string | null
+        }
+        Insert: {
+          author_id?: string | null
+          body: string
+          created_at?: string
+          id?: number
+          is_system?: boolean
+          league_id: number
+          system_kind?: string | null
+        }
+        Update: {
+          author_id?: string | null
+          body?: string
+          created_at?: string
+          id?: number
+          is_system?: boolean
+          league_id?: number
+          system_kind?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "league_posts_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_posts_league_id_fkey"
+            columns: ["league_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leagues: {
         Row: {
           created_at: string
@@ -891,6 +1008,7 @@ export type Database = {
           eng_simulator: number
         }[]
       }
+      current_user_is_admin: { Args: never; Returns: boolean }
       global_leaderboard: {
         Args: { p_limit?: number }
         Returns: {
@@ -902,11 +1020,37 @@ export type Database = {
         }[]
       }
       is_league_member: { Args: { league: number }; Returns: boolean }
+      is_league_owner: { Args: { league: number }; Returns: boolean }
       join_league: {
         Args: { p_code: string }
         Returns: {
           id: number
           name: string
+        }[]
+      }
+      league_feed: {
+        Args: { p_league: number; p_limit?: number; p_offset?: number }
+        Returns: {
+          author_id: string
+          author_name: string
+          body: string
+          created_at: string
+          id: number
+          is_system: boolean
+          like_count: number
+          liked_by_me: boolean
+          reply_count: number
+          system_kind: string
+        }[]
+      }
+      league_post_thread: {
+        Args: { p_post: number }
+        Returns: {
+          author_id: string
+          author_name: string
+          body: string
+          created_at: string
+          id: number
         }[]
       }
       league_standings: {
@@ -918,6 +1062,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      post_league_id: { Args: { p_post: number }; Returns: number }
       settle_paddock_race: {
         Args: {
           p_coins: number
