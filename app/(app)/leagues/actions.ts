@@ -3,6 +3,14 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  POST_RATE_LIMIT,
+  REPLY_RATE_LIMIT,
+  validatePostBody,
+  validateReplyBody,
+} from "@/lib/social";
+import { announceMemberJoined } from "@/lib/social/system";
 
 const MAX_LEAGUES = 5;
 
@@ -92,12 +100,45 @@ export async function joinLeague(code: string): Promise<JoinLeagueResult> {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "You're not signed in." };
 
-  const { data, error } = await supabase.rpc("join_league", {
-    p_code: code.trim().toUpperCase(),
-  });
+  const normalized = code.trim().toUpperCase();
+
+  // join_league is idempotent (re-joining is a no-op but still returns the
+  // league), so we check membership up front — via the admin client, since RLS
+  // hides leagues you're not in — to only welcome a genuine new join.
+  const admin = createAdminClient();
+  const { data: league } = await admin
+    .from("leagues")
+    .select("id")
+    .eq("invite_code", normalized)
+    .maybeSingle();
+  let wasMember = false;
+  if (league) {
+    const { count } = await admin
+      .from("league_members")
+      .select("*", { count: "exact", head: true })
+      .eq("league_id", league.id)
+      .eq("user_id", user.id);
+    wasMember = (count ?? 0) > 0;
+  }
+
+  const { data, error } = await supabase.rpc("join_league", { p_code: normalized });
   if (error) return { ok: false, error: error.message };
   const row = data?.[0];
   if (!row) return { ok: false, error: "League not found." };
+
+  if (!wasMember) {
+    // Best-effort welcome post — never fail the join over a feed hiccup.
+    try {
+      const { data: profile } = await supabase
+        .from("users")
+        .select("display_name")
+        .eq("id", user.id)
+        .maybeSingle();
+      await announceMemberJoined(admin, row.id, profile?.display_name ?? "A new player");
+    } catch {
+      // ignore — the join succeeded
+    }
+  }
 
   revalidatePath("/leagues");
   return { ok: true, id: row.id, name: row.name };
@@ -157,5 +198,159 @@ export async function deleteLeague(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/leagues");
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Social feed — text posts, flat replies, likes. RLS is the real guard
+// (membership + authorship, see 20260821120000_league_social_feed.sql); these
+// add the shared validation (lib/social) and a per-author rate limit. The
+// length CHECK constraints backstop the body validation.
+// ---------------------------------------------------------------------------
+
+export type FeedActionResult = { ok: true } | { ok: false; error: string };
+
+// How many of this author's rows landed in the last window — the rate-limit
+// signal. Counts across leagues (a per-person cap), RLS-safe (own rows).
+async function recentCount(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  table: "league_posts" | "league_post_replies",
+  authorId: string,
+  windowMs: number
+): Promise<number> {
+  const since = new Date(Date.now() - windowMs).toISOString();
+  const { count } = await supabase
+    .from(table)
+    .select("*", { count: "exact", head: true })
+    .eq("author_id", authorId)
+    .gte("created_at", since);
+  return count ?? 0;
+}
+
+export async function createPost(
+  leagueId: number,
+  rawBody: string
+): Promise<FeedActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "You're not signed in." };
+
+  const body = validatePostBody(rawBody);
+  if (!body.ok) return body;
+
+  if ((await recentCount(supabase, "league_posts", user.id, POST_RATE_LIMIT.windowMs)) >= POST_RATE_LIMIT.max) {
+    return { ok: false, error: "You're posting too fast — give it a minute." };
+  }
+
+  const { error } = await supabase
+    .from("league_posts")
+    .insert({ league_id: leagueId, author_id: user.id, body: body.value });
+  if (error) return { ok: false, error: "Couldn't post — are you a member of this league?" };
+
+  revalidatePath(`/leagues/${leagueId}`);
+  return { ok: true };
+}
+
+export async function addReply(
+  postId: number,
+  leagueId: number,
+  rawBody: string
+): Promise<FeedActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "You're not signed in." };
+
+  const body = validateReplyBody(rawBody);
+  if (!body.ok) return body;
+
+  if ((await recentCount(supabase, "league_post_replies", user.id, REPLY_RATE_LIMIT.windowMs)) >= REPLY_RATE_LIMIT.max) {
+    return { ok: false, error: "You're replying too fast — give it a moment." };
+  }
+
+  const { error } = await supabase
+    .from("league_post_replies")
+    .insert({ post_id: postId, author_id: user.id, body: body.value });
+  if (error) return { ok: false, error: "Couldn't reply — are you a member of this league?" };
+
+  revalidatePath(`/leagues/${leagueId}`);
+  return { ok: true };
+}
+
+// Add or remove the caller's like. Idempotent from the UI's point of view.
+export async function toggleLike(
+  postId: number,
+  leagueId: number
+): Promise<FeedActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "You're not signed in." };
+
+  const { data: existing } = await supabase
+    .from("league_post_likes")
+    .select("post_id")
+    .eq("post_id", postId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("league_post_likes")
+      .delete()
+      .eq("post_id", postId)
+      .eq("user_id", user.id);
+    if (error) return { ok: false, error: error.message };
+  } else {
+    const { error } = await supabase
+      .from("league_post_likes")
+      .insert({ post_id: postId, user_id: user.id });
+    if (error) return { ok: false, error: "Couldn't like — are you a member of this league?" };
+  }
+
+  revalidatePath(`/leagues/${leagueId}`);
+  return { ok: true };
+}
+
+// Delete a post. RLS decides who may: the author, the league owner, or an
+// admin — a non-permitted delete simply affects no rows.
+export async function deletePost(
+  postId: number,
+  leagueId: number
+): Promise<FeedActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "You're not signed in." };
+
+  const { error } = await supabase.from("league_posts").delete().eq("id", postId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/leagues/${leagueId}`);
+  return { ok: true };
+}
+
+export async function deleteReply(
+  replyId: number,
+  leagueId: number
+): Promise<FeedActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "You're not signed in." };
+
+  const { error } = await supabase
+    .from("league_post_replies")
+    .delete()
+    .eq("id", replyId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/leagues/${leagueId}`);
   return { ok: true };
 }
