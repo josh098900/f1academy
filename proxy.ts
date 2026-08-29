@@ -1,24 +1,17 @@
-import { type NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
-import { updateSession } from "@/lib/supabase/middleware";
-
-// Next.js 16 renamed the `middleware` file convention to `proxy`.
-// Runs on every matched request to refresh the Supabase auth session.
-export async function proxy(request: NextRequest) {
-  return await updateSession(request);
+// The trial is closed. Every authenticated route now redirects to the farewell
+// page at / — there's no app left to reach and no session to refresh. (This
+// previously called updateSession() to refresh the Supabase auth cookie; the
+// original is in git if the app is ever reopened.)
+export function proxy(request: NextRequest) {
+  return NextResponse.redirect(new URL("/", request.url));
 }
 
 export const config = {
-  // Only routes where SERVER code reads the session need the refresh: Server
-  // Components can't persist a refreshed cookie themselves, so the proxy must
-  // do it for them. Everything else manages without: /login is a static page
-  // whose browser client refreshes its own cookies, /auth/* route handlers set
-  // cookies directly (exchangeCodeForSession / verifyOtp), and the landing,
-  // about, privacy and recommends pages never touch auth. Server actions POST
-  // to their page's own path, so they're covered by these patterns.
-  //
-  // NOTE: a new authenticated section must be added here, or its Server
-  // Components will see expired sessions they can't refresh.
+  // The authenticated surface — dashboards, team, leagues, admin, and the
+  // Server Actions that POST to those paths. Redirecting all of it closes the
+  // app in one place; the public farewell page at / is not matched.
   matcher: [
     "/dashboard/:path*",
     "/team/:path*",
